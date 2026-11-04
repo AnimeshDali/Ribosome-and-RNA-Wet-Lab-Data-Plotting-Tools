@@ -56,7 +56,7 @@ Upload differential-expression or proteomics results with one row per gene.
 
 ## Bar Plot
 
-![A grouped bar plot of four genes' relative expression in two strains, with replicate points](screenshots/bar-plot.png)
+![A bar plot of four genes' relative expression without and with a drug, with replicate points and significance brackets](screenshots/bar-plot.png)
 
 Bars of the mean with error bars and the individual replicates overlaid, for qPCR, dual-luciferase or any
 other replicate measurements.
