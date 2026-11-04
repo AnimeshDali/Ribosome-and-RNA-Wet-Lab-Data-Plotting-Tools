@@ -1,0 +1,2118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Polysome, Volcano &amp; Bar Plotter</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js" charset="utf-8"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/svg2pdf.js/2.2.1/svg2pdf.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #ffffff;
+    --surface: #f7f8fa;
+    --border:  #e2e4e9;
+    --text:    #1a1d23;
+    --muted:   #6b7280;
+    --accent:  #2563eb;
+    --danger:  #dc2626;
+    --mono:    'IBM Plex Mono', monospace;
+    --sans:    'IBM Plex Sans', sans-serif;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.6; }
+
+  .app { max-width: 960px; margin: 0 auto; padding: 48px 24px 80px; }
+
+  header { margin-bottom: 32px; }
+  h1 { font-size: 20px; font-weight: 600; color: var(--text); margin-bottom: 4px; letter-spacing: -0.01em; }
+  .subtitle { font-size: 13px; color: var(--muted); max-width: 560px; }
+
+  .upload-zone {
+    border: 1.5px dashed var(--border); border-radius: 8px;
+    padding: 32px 24px; text-align: center; cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    position: relative; margin-bottom: 20px; background: var(--surface);
+  }
+  .upload-zone:hover, .upload-zone.drag-over { border-color: var(--accent); background: #eff6ff; }
+  .upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+  .upload-title { font-size: 14px; font-weight: 500; color: var(--text); margin-bottom: 3px; }
+  .upload-sub   { font-size: 12px; color: var(--muted); }
+  .upload-filename { font-family: var(--mono); font-size: 12px; color: var(--accent); margin-top: 8px; display: none; }
+
+  .section-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+
+  .settings { display: none; margin-bottom: 16px; }
+  .settings.visible { display: block; }
+  .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 600px) { .settings-grid { grid-template-columns: 1fr; } }
+
+  .field label { display: block; font-size: 11px; font-weight: 500; color: var(--muted); margin-bottom: 4px; }
+  .field input[type=number] {
+    width: 100%; background: var(--bg); border: 1.5px solid var(--border);
+    border-radius: 6px; color: var(--text); font-family: var(--mono);
+    font-size: 13px; padding: 7px 10px; outline: none; transition: border-color 0.15s;
+  }
+  .field input[type=number]:focus { border-color: var(--accent); }
+  .field-hint { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  .run-btn {
+    display: none; width: 100%; padding: 11px;
+    background: var(--accent); border: none; color: #fff;
+    font-family: var(--sans); font-size: 13px; font-weight: 500;
+    cursor: pointer; border-radius: 6px; transition: opacity 0.15s; margin-bottom: 28px;
+  }
+  .run-btn:hover { opacity: 0.88; }
+  .run-btn.visible { display: block; }
+
+  .chart-wrap { display: none; margin-bottom: 16px; }
+  .chart-wrap.visible { display: block; }
+  .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+  .chart-title  { font-size: 14px; font-weight: 600; color: var(--text); }
+  .chart-sub    { font-size: 12px; color: var(--muted); }
+
+  .view-toggle { display: inline-flex; border: 1.5px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .view-toggle button {
+    padding: 6px 14px; background: transparent; border: none;
+    color: var(--muted); font-family: var(--sans); font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: background 0.15s, color 0.15s; white-space: nowrap;
+  }
+  .view-toggle button.active { background: var(--accent); color: #fff; }
+  .view-toggle button:not(:last-child) { border-right: 1.5px solid var(--border); }
+
+  canvas { width: 100% !important; }
+
+  .axis-controls { display: none; margin-bottom: 20px; }
+  .axis-controls.visible { display: block; }
+  .axis-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; align-items: start; }
+  .axis-slider { width: 100%; margin-top: 9px; accent-color: var(--accent); cursor: pointer; display: block; }
+  @media (max-width: 640px) { .axis-row { grid-template-columns: 1fr 1fr; } }
+  .axis-field label { display: block; font-size: 11px; font-weight: 500; color: var(--muted); margin-bottom: 4px; }
+  .axis-field input[type=number] {
+    width: 100%; background: var(--bg); border: 1.5px solid var(--border);
+    border-radius: 6px; color: var(--text); font-family: var(--mono);
+    font-size: 13px; padding: 7px 10px; outline: none; transition: border-color 0.15s;
+  }
+  .axis-field input[type=number]:focus { border-color: var(--accent); }
+  .axis-btns { display: flex; gap: 8px; margin-top: 10px; }
+  .axis-apply-btn {
+    padding: 7px 16px; background: transparent; border: 1.5px solid var(--border);
+    color: var(--muted); font-family: var(--sans); font-size: 12px; font-weight: 500;
+    cursor: pointer; border-radius: 6px; transition: border-color 0.15s, color 0.15s;
+  }
+  .axis-apply-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-row { display: none; gap: 10px; }
+  .btn-row.visible { display: flex; }
+  .dl-btn {
+    flex: 1; padding: 11px; background: var(--accent); border: none; color: #fff;
+    font-family: var(--sans); font-size: 13px; font-weight: 500;
+    cursor: pointer; border-radius: 6px; transition: opacity 0.15s;
+  }
+  .dl-btn:hover { opacity: 0.88; }
+  .pdf-btn {
+    flex: 1; padding: 11px; background: transparent; border: 1.5px solid var(--border);
+    color: var(--muted); font-family: var(--sans); font-size: 13px; font-weight: 500;
+    cursor: pointer; border-radius: 6px; transition: border-color 0.15s, color 0.15s;
+  }
+  .pdf-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .error-banner {
+    display: none; padding: 12px 16px; background: #fef2f2; border: 1px solid #fecaca;
+    border-radius: 6px; color: var(--danger); font-size: 13px; margin-bottom: 16px;
+  }
+  .error-banner.visible { display: block; }
+
+  footer { margin-top: 48px; font-size: 12px; color: var(--muted); text-align: center; }
+
+  /* Y-Shift panel */
+  .yshift-panel { display: none; margin-bottom: 20px; }
+  .yshift-panel.visible { display: block; }
+  .yshift-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .yshift-swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+  .yshift-name { font-family: var(--mono); font-size: 12px; color: var(--text); min-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .yshift-slider { flex: 1; accent-color: var(--accent); cursor: pointer; }
+  .yshift-val { font-family: var(--mono); font-size: 12px; color: var(--muted); width: 52px; text-align: right; flex-shrink: 0; }
+  .yshift-reset-btn {
+    padding: 5px 12px; background: transparent; border: 1.5px solid var(--border);
+    color: var(--muted); font-family: var(--sans); font-size: 11px; font-weight: 500;
+    cursor: pointer; border-radius: 6px; transition: border-color 0.15s, color 0.15s; margin-top: 4px;
+  }
+  .yshift-reset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  @media print {
+    .topnav, .vp-controls, header, .upload-zone, .settings, .run-btn, .axis-controls, .appearance-panel, .yshift-panel, .btn-row, .view-toggle, footer { display: none !important; }
+    .app { max-width: 100%; padding: 0; }
+    .chart-wrap { display: block !important; }
+  }
+
+  /* ── Top navigation + pages ───────────────────────────────────────────── */
+  .topnav { position: sticky; top: 0; z-index: 50; background: rgba(255,255,255,0.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
+  .topnav-inner { max-width: 1180px; margin: 0 auto; padding: 0 24px; height: 52px; display: flex; align-items: center; }
+  .topnav-tabs { display: flex; gap: 2px; }
+  .topnav-tab {
+    appearance: none; background: transparent; border: none; cursor: pointer;
+    font-family: var(--sans); font-size: 13px; font-weight: 500; color: var(--muted);
+    padding: 8px 14px; border-radius: 6px; position: relative; transition: color .15s, background .15s;
+  }
+  .topnav-tab:hover { color: var(--text); background: var(--surface); }
+  .topnav-tab.active { color: var(--accent); }
+  .topnav-tab.active::after { content: ''; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 2px; background: var(--accent); border-radius: 2px 2px 0 0; }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ── Volcano page ─────────────────────────────────────────────────────── */
+  .vp-app { max-width: 1180px; margin: 0 auto; padding: 40px 24px 80px; }
+  .vp-grid { display: grid; grid-template-columns: 320px 1fr; gap: 28px; align-items: start; }
+  @media (max-width: 880px) { .vp-grid { grid-template-columns: 1fr; } }
+
+  .vp-controls { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+  .vp-section { display: flex; flex-direction: column; gap: 10px; }
+
+  .vp-field { display: flex; flex-direction: column; gap: 4px; }
+  .vp-field > label { font-size: 11px; font-weight: 500; color: var(--muted); }
+  .vp-field input[type=text], .vp-field input[type=number], .vp-controls select, .vp-genes-input {
+    width: 100%; background: var(--bg); border: 1.5px solid var(--border); border-radius: 6px;
+    color: var(--text); font-family: var(--mono); font-size: 12.5px; padding: 7px 10px;
+    outline: none; transition: border-color .15s;
+  }
+  .vp-field input:focus, .vp-controls select:focus, .vp-genes-input:focus { border-color: var(--accent); }
+  .vp-controls select { font-family: var(--sans); cursor: pointer; }
+  .vp-field-hint { font-size: 11px; color: var(--muted); line-height: 1.45; }
+
+  .vp-slider-field { display: flex; flex-direction: column; gap: 6px; }
+  .vp-slider-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .vp-slider-head label { font-size: 11px; font-weight: 500; color: var(--muted); }
+  .vp-val { font-family: var(--mono); font-size: 12px; color: var(--text); }
+  .vp-slider-field input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+
+  .vp-color-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .vp-gene-colors { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .vp-color-row span { font-size: 12px; color: var(--text); }
+  .vp-color-row input[type=color] {
+    -webkit-appearance: none; appearance: none; width: 46px; height: 26px;
+    border: 1.5px solid var(--border); border-radius: 6px; padding: 0; cursor: pointer; background: none;
+  }
+  .vp-color-row input[type=color]::-webkit-color-swatch-wrapper { padding: 2px; }
+  .vp-color-row input[type=color]::-webkit-color-swatch { border: none; border-radius: 4px; }
+  .vp-color-row input[type=color]::-moz-color-swatch { border: none; border-radius: 4px; }
+
+  .vp-check-row label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; }
+  .vp-check-row input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+
+  .vp-export-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .vp-reset-btn { margin-top: 2px; padding: 7px 10px; font-size: 12px; font-family: var(--sans); background: var(--surface); color: var(--text); border: 1.5px solid var(--border); border-radius: 6px; cursor: pointer; }
+  .vp-reset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Ribosome plot appearance panel ───────────────────────────────────── */
+  .appearance-panel { display: none; margin-bottom: 20px; }
+  .appearance-panel.visible { display: block; }
+  .trace-colors { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px 16px; margin-bottom: 16px; }
+  .appearance-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 16px; align-items: end; }
+  @media (max-width: 640px) { .appearance-grid { grid-template-columns: 1fr 1fr; } }
+
+  /* ── qPCR / Luciferase page ───────────────────────────────────────────── */
+  .vp-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .qp-filter { display: flex; flex-direction: column; gap: 5px; }
+  .qp-filter-label { font-size: 11px; font-weight: 500; color: var(--muted); }
+  .qp-filter-list { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .qp-filter-list label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); cursor: pointer; }
+  .qp-filter-list input[type=checkbox] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+  #qpPlot { width: 100%; height: 560px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+  .qp-rename-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 8px; }
+  .qp-rename-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(115px, 1fr)); gap: 6px; }
+  .qp-rename-input, .trace-name-input { width: 100%; min-width: 0; background: var(--bg); border: 1.5px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--mono); font-size: 12px; padding: 5px 8px; outline: none; transition: border-color .15s; }
+  .qp-rename-input:focus, .trace-name-input:focus { border-color: var(--accent); }
+  .trace-edit-row { display: flex; align-items: center; gap: 8px; }
+  .trace-name-input { flex: 1; }
+  .trace-edit-row input[type=color] { -webkit-appearance: none; appearance: none; width: 40px; height: 26px; border: 1.5px solid var(--border); border-radius: 6px; padding: 0; cursor: pointer; background: none; flex: none; }
+  .trace-edit-row input[type=color]::-webkit-color-swatch-wrapper { padding: 2px; }
+  .trace-edit-row input[type=color]::-webkit-color-swatch { border: none; border-radius: 4px; }
+  .trace-edit-row input[type=color]::-moz-color-swatch { border: none; border-radius: 4px; }
+  .vp-summary { font-size: 12px; color: var(--text); line-height: 1.5; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 11px 13px; }
+  .vp-summary b { color: var(--text); }
+
+  .vp-plotcol { position: sticky; top: 68px; min-width: 0; }
+  @media (max-width: 880px) { .vp-plotcol { position: static; } }
+  #vpPlot { width: 100%; height: 560px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+  .vp-plot-empty {
+    display: flex; align-items: center; justify-content: center; height: 560px;
+    border: 1.5px dashed var(--border); border-radius: 8px; background: var(--surface); text-align: center;
+  }
+  .vp-empty-title { font-size: 14px; font-weight: 500; color: var(--text); margin-bottom: 4px; }
+  .vp-empty-sub { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-inner">
+    <div class="topnav-tabs">
+      <button class="topnav-tab active" data-page="ribosome">Polysome Profiles</button>
+      <button class="topnav-tab" data-page="volcano">Volcano Plot</button>
+      <button class="topnav-tab" data-page="qpcr">Bar Plot</button>
+    </div>
+  </div>
+</nav>
+
+<div class="page active" id="page-ribosome">
+<div class="app">
+
+  <header>
+    <h1>Polysome Profiles</h1>
+    <p class="subtitle">Upload a chromatography CSV. Traces are baseline-corrected, aligned to the 80S monosome at x&nbsp;=&nbsp;0, and normalized.</p>
+  </header>
+
+  <div class="error-banner" id="errorBanner"></div>
+
+  <div class="upload-zone" id="dropZone">
+    <input type="file" id="fileInput" accept=".csv">
+    <div class="upload-title">Drop CSV here or click to browse</div>
+    <div class="upload-sub">Expects paired Position(mm) / Absorbance columns</div>
+    <div class="upload-filename" id="uploadFilename"></div>
+  </div>
+
+  <div class="settings" id="settings">
+    <div class="section-label">Detection settings</div>
+    <div class="settings-grid">
+      <div class="field">
+        <label>Peak Prominence Threshold</label>
+        <input type="number" id="prominence" value="0.05" min="0.001" step="0.01">
+        <div class="field-hint">Min prominence (AU) for a peak. Lower = more sensitive.</div>
+      </div>
+      <div class="field">
+        <label>Min Peak Separation (pts)</label>
+        <input type="number" id="minDist" value="5" min="1" step="1">
+        <div class="field-hint">Min data points between peaks.</div>
+      </div>
+      <div class="field">
+        <label>Monosome Window — Start (%)</label>
+        <input type="number" id="windowStart" value="30" min="0" max="90" step="5">
+        <div class="field-hint">Start of 80S search window, as % of trace length.</div>
+      </div>
+      <div class="field">
+        <label>Monosome Window — End (%)</label>
+        <input type="number" id="windowEnd" value="70" min="10" max="100" step="5">
+        <div class="field-hint">End of 80S search window, as % of trace length.</div>
+      </div>
+    </div>
+  </div>
+
+  <button class="run-btn" id="runBtn" onclick="runAnalysis()">Run normalization &amp; alignment</button>
+
+  <div class="chart-wrap" id="chartWrap">
+    <div class="chart-header">
+      <div>
+        <div class="chart-title" id="chartTitle">Normalized traces</div>
+        <div class="chart-sub"  id="chartSub">Monosome at x = 0, y = 1</div>
+      </div>
+      <div class="view-toggle">
+        <button id="btnNorm" class="active" onclick="setView('norm')">Normalized</button>
+        <button id="btnAbs"  onclick="setView('abs')">Absolute AU</button>
+        <button id="btnShift" onclick="setView('shift')">Y-Shift</button>
+      </div>
+    </div>
+    <canvas id="chart"></canvas>
+  </div>
+
+  <div class="appearance-panel" id="appearancePanel">
+    <div class="section-label">Plot appearance</div>
+    <div class="trace-colors" id="traceColors"></div>
+    <div class="appearance-grid">
+      <div class="vp-slider-field"><div class="vp-slider-head"><label>Line width</label><span class="vp-val" id="rbLwVal">1.6</span></div><input type="range" id="rbLw" min="0.5" max="5" step="0.1" value="1.6"></div>
+      <div class="vp-slider-field"><div class="vp-slider-head"><label>Smoothing</label><span class="vp-val" id="rbTenVal">0.15</span></div><input type="range" id="rbTen" min="0" max="0.5" step="0.01" value="0.15"></div>
+      <div class="vp-slider-field"><div class="vp-slider-head"><label>Opacity</label><span class="vp-val" id="rbOpVal">1.00</span></div><input type="range" id="rbOp" min="0.1" max="1" step="0.05" value="1"></div>
+      <div class="vp-slider-field"><div class="vp-slider-head"><label>Axis label size</label><span class="vp-val" id="rbAxVal">11</span></div><input type="range" id="rbAx" min="8" max="20" step="1" value="11"></div>
+      <div class="vp-slider-field"><div class="vp-slider-head"><label>Tick size</label><span class="vp-val" id="rbTkVal">10</span></div><input type="range" id="rbTk" min="7" max="18" step="1" value="10"></div>
+      <div class="vp-check-row" style="align-self:end"><label><input type="checkbox" id="rbLegend" checked> Legend</label></div>
+      <div class="vp-field"><label>X-axis label</label><input type="text" id="rbXLab" placeholder="Gradient Fraction"></div>
+      <div class="vp-field"><label>Y-axis label</label><input type="text" id="rbYLab" placeholder="auto (by view)"></div>
+    </div>
+  </div>
+
+  <div class="axis-controls" id="axisControls">
+    <div class="section-label">Axis range</div>
+    <div class="axis-row">
+      <div class="axis-field"><label>X min (mm)</label><input type="number" id="xMin" placeholder="auto" step="1"><input type="range" id="xMinR" class="axis-slider"></div>
+      <div class="axis-field"><label>X max (mm)</label><input type="number" id="xMax" placeholder="auto" step="1"><input type="range" id="xMaxR" class="axis-slider"></div>
+      <div class="axis-field"><label>Y min</label><input type="number" id="yMin" value="0" step="0.1"><input type="range" id="yMinR" class="axis-slider"></div>
+      <div class="axis-field"><label>Y max</label><input type="number" id="yMax" placeholder="auto" step="0.1"><input type="range" id="yMaxR" class="axis-slider"></div>
+    </div>
+    <div class="axis-btns">
+      <button class="axis-apply-btn" onclick="applyAxisLimits()">Apply</button>
+      <button class="axis-apply-btn" onclick="resetAxisLimits()">Reset</button>
+    </div>
+  </div>
+
+  <div class="yshift-panel" id="yshiftPanel">
+    <div class="section-label">Y-axis offset per trace</div>
+    <div id="yshiftSliders"></div>
+    <button class="yshift-reset-btn" onclick="resetYShifts()">Reset all offsets</button>
+  </div>
+
+  <div class="btn-row" id="btnRow">
+    <button class="dl-btn"  onclick="downloadCSV()">Download CSV</button>
+    <button class="dl-btn"  onclick="downloadPolysomeSVG()">SVG</button>
+    <button class="pdf-btn" onclick="downloadPolysomePDF()">PDF (vector)</button>
+    <button class="pdf-btn" onclick="printChart()">Print</button>
+  </div>
+
+  <footer> </footer>
+</div>
+</div><!-- /page-ribosome -->
+
+<div class="page" id="page-volcano">
+<div class="vp-app">
+
+  <header>
+    <h1>Volcano Plot</h1>
+    <p class="subtitle">Upload a CSV with gene, log&#8322; fold change, and p-value columns.</p>
+  </header>
+
+  <div class="error-banner" id="vpError"></div>
+
+  <div class="vp-grid">
+
+    <div class="vp-controls">
+
+      <div class="upload-zone" id="vpDrop">
+        <input type="file" id="vpFile" accept=".csv">
+        <div class="upload-title">Drop CSV here or click to browse</div>
+        <div class="upload-sub">Gene &middot; log&#8322;FC &middot; p-value columns</div>
+        <div class="upload-filename" id="vpFilename"></div>
+      </div>
+
+      <div class="vp-section" id="vpMapSection" style="display:none">
+        <div class="section-label">Columns</div>
+        <div class="vp-field"><label>Gene names</label><select id="vpGeneCol"></select></div>
+        <div class="vp-field"><label>X column</label><select id="vpXCol"></select></div>
+        <div class="vp-field"><label>Y column</label><select id="vpYCol"></select></div>
+        <div class="vp-field"><label>X-axis transform</label><select id="vpXfm"><option value="none">Linear (use values as-is)</option><option value="log2">log&#8322;(x)</option></select></div>
+        <div class="vp-field"><label>Y-axis transform</label><select id="vpYfm"><option value="neglog10">&#8722;log&#8321;&#8320;(y)</option><option value="none">Linear (use values as-is)</option></select></div>
+        <div class="vp-field-hint">Mix and match, e.g. log&#8322; fold change vs raw p-value, or raw fold change vs &#8722;log&#8321;&#8320; p. The p-value cutoff is always applied to the raw Y value (smaller = more significant).</div>
+      </div>
+
+      <div class="vp-section">
+        <div class="section-label">Thresholds</div>
+        <div class="vp-slider-field">
+          <div class="vp-slider-head"><label>log&#8322;FC cutoff</label><span class="vp-val" id="vpFcVal">1.0</span></div>
+          <input type="range" id="vpFc" min="0" max="6" step="0.1" value="1">
+        </div>
+        <div class="vp-field"><label>p-value cutoff</label><input type="number" id="vpP" value="0.05" min="0" max="1" step="0.005"></div>
+      </div>
+
+      <div class="vp-section">
+        <div class="section-label">Colours</div>
+        <div class="vp-color-row"><span>Up (significant)</span><input type="color" id="vpColUp" value="#d1495b"></div>
+        <div class="vp-color-row"><span>Down (significant)</span><input type="color" id="vpColDown" value="#2e78b5"></div>
+        <div class="vp-color-row"><span>Not significant</span><input type="color" id="vpColNs" value="#bebebe"></div>
+        <div class="vp-color-row"><span>Genes of interest</span><input type="color" id="vpColHit" value="#2e78b5"></div>
+      </div>
+
+      <div class="vp-section">
+        <div class="section-label">Points</div>
+        <div class="vp-slider-field"><div class="vp-slider-head"><label>Point size</label><span class="vp-val" id="vpSzVal">5</span></div><input type="range" id="vpSz" min="1" max="14" step="0.5" value="5"></div>
+        <div class="vp-slider-field"><div class="vp-slider-head"><label>Genes-of-interest size</label><span class="vp-val" id="vpHitSzVal">12</span></div><input type="range" id="vpHitSz" min="4" max="28" step="0.5" value="12"></div>
+        <div class="vp-slider-field"><div class="vp-slider-head"><label>Opacity</label><span class="vp-val" id="vpOpVal">0.75</span></div><input type="range" id="vpOp" min="0.1" max="1" step="0.05" value="0.75"></div>
+        <div class="vp-check-row"><label><input type="checkbox" id="vpOutline" checked> Outline genes of interest</label></div>
+        <div class="vp-slider-field"><div class="vp-slider-head"><label>Outline width</label><span class="vp-val" id="vpOwVal">1.5</span></div><input type="range" id="vpOw" min="0" max="4" step="0.5" value="1.5"></div>
+        <div class="vp-color-row"><span>Outline colour</span><input type="color" id="vpOc" value="#000000"></div>
+      </div>
+
+      <div class="vp-section">
+        <div class="section-label">Axes &amp; labels</div>
+        <div class="vp-field"><label>Title</label><input type="text" id="vpTitle" placeholder="Plot title (optional)"></div>
+        <div class="vp-field"><label>X-axis label</label><input type="text" id="vpXLab" value="log&lt;sub&gt;2&lt;/sub&gt; fold change"></div>
+        <div class="vp-field"><label>Y-axis label</label><input type="text" id="vpYLab" value="-log&lt;sub&gt;10&lt;/sub&gt;P"></div>
+        <div class="vp-field-hint">HTML allowed in labels: &lt;sub&gt; &lt;sup&gt; &lt;i&gt; &lt;b&gt;</div>
+        <div class="vp-slider-field"><div class="vp-slider-head"><label>Axis font size</label><span class="vp-val" id="vpFontVal">14</span></div><input type="range" id="vpFont" min="8" max="22" step="1" value="14"></div>
+        <div class="vp-slider-field"><div class="vp-slider-head"><label>Label font size</label><span class="vp-val" id="vpLabSzVal">13</span></div><input type="range" id="vpLabSz" min="8" max="22" step="1" value="13"></div>
+        <div class="vp-check-row"><label><input type="checkbox" id="vpSym" checked> Symmetric x-axis</label></div>
+        <div class="vp-check-row"><label><input type="checkbox" id="vpThline" checked> Threshold lines</label></div>
+        <div class="vp-check-row"><label><input type="checkbox" id="vpLegend" checked> Legend</label></div>
+        <div class="vp-check-row"><label><input type="checkbox" id="vpLabels" checked> Gene-of-interest labels</label></div>
+        <div class="vp-check-row"><label><input type="checkbox" id="vpRepel" checked> Auto-arrange labels (avoid overlap)</label></div>
+        <div class="vp-field-hint">Drag any highlighted label in the plot to reposition it &mdash; the arrow follows. Hand-placed labels stay put through edits and export to PDF/SVG as placed.</div>
+        <button type="button" id="vpResetLabels" class="vp-reset-btn" style="display:none">Reset label positions</button>
+      </div>
+
+      <div class="vp-section">
+        <div class="section-label">Genes of interest</div>
+        <input type="text" id="vpGenes" class="vp-genes-input" value="Gene A, Gene B=Protein B, Gene C">
+        <div class="vp-field-hint">Comma-separated. Use SYMBOL=Label to rename (e.g. Gene B=Protein B). Matching is case-insensitive.</div>
+        <div id="vpGeneColors" class="vp-gene-colors"></div>
+        <button type="button" id="vpResetGeneCols" class="vp-reset-btn" style="display:none">Reset highlighted-gene colours</button>
+      </div>
+
+      <div class="vp-section">
+        <div class="section-label">Analysis</div>
+        <div class="vp-check-row"><label><input type="checkbox" id="vpExplain"> Show analysis summary</label></div>
+        <div class="vp-summary" id="vpSummary" style="display:none"></div>
+      </div>
+
+      <div class="vp-section">
+        <div class="section-label">Export</div>
+        <div class="vp-export-row">
+          <button class="dl-btn" id="vpPng">PNG</button>
+          <button class="pdf-btn" id="vpSvg">SVG</button>
+          <button class="pdf-btn" id="vpPdf">PDF</button>
+        </div>
+        <div class="vp-field-hint">Tip: hover any point for its gene and values. Use the toolbar at the plot's top-right to zoom, pan, or reset.</div>
+      </div>
+
+    </div>
+
+    <div class="vp-plotcol">
+      <div class="vp-plot-empty" id="vpEmpty">
+        <div>
+          <div class="vp-empty-title">No data yet</div>
+          <div class="vp-empty-sub">Upload a CSV to render the volcano plot.</div>
+        </div>
+      </div>
+      <div id="vpPlot" style="display:none"></div>
+    </div>
+
+  </div>
+
+  <footer> </footer>
+</div>
+</div><!-- /page-volcano -->
+
+<div class="page" id="page-qpcr">
+<div class="vp-app">
+
+  <header>
+    <h1>Bar Plot</h1>
+    <p class="subtitle">For qPCR, dual-luciferase or other replicate measurements. Upload triplicate data with a <b>Strain</b> column and a <b>Gene</b> column (or a single combined &ldquo;Strain Gene&rdquo; label), and treatment names centred over each block of replicate columns. Bars show mean &plusmn; error with the individual replicates overlaid; cluster the bars by treatment or by strain.</p>
+  </header>
+
+  <div class="error-banner" id="qpError"></div>
+
+  <div class="vp-grid">
+    <div class="vp-controls">
+
+      <div class="upload-zone" id="qpDrop">
+        <input type="file" id="qpFile" accept=".csv">
+        <div class="upload-title">Drop CSV here or click to browse</div>
+        <div class="upload-sub">Strain &amp; Gene columns &middot; treatment blocks across columns</div>
+        <div class="upload-filename" id="qpFilename"></div>
+      </div>
+
+      <div class="vp-section" id="qpSetupSection" style="display:none">
+        <div class="section-label">Layout</div>
+        <div class="vp-field"><label>X-axis</label><select id="qpXDim"><option value="gene">Gene</option><option value="strain">Strain</option><option value="treatment">Treatment</option></select></div>
+        <div class="vp-field"><label>Group bars by</label><select id="qpGroupDim"><option value="treatment">Treatment</option><option value="strain">Strain</option><option value="gene">Gene</option></select></div>
+        <div class="vp-check-row"><label><input type="checkbox" id="qpSwap"> Swap strain / gene in labels</label></div>
+        <div class="vp-check-row"><label><input type="checkbox" id="qpNested"> Nested x-axis (sub-labels under bars)</label></div>
+        <div class="vp-field" id="qpSubLabField" style="display:none"><label>Sub-axis label</label><input type="text" id="qpSubLab" placeholder="name of inner variable, e.g. Treatment"></div>
+        <div class="vp-field-hint" id="qpNestedHint" style="display:none">Bars are coloured and the legend keyed by the <b>X-axis</b> group; <b>Group bars by</b> becomes the inner sub-category, drawn as short labels under each bar. Rename its values to symbols (e.g. &#8722; / +) in the Rename section.</div>
+      </div>
+
+      <div class="vp-section" id="qpFilterSection" style="display:none">
+        <div class="section-label">Include</div>
+        <div class="qp-filter"><div class="qp-filter-label">Strains</div><div class="qp-filter-list" id="qpFilterStrain"></div></div>
+        <div class="qp-filter"><div class="qp-filter-label">Genes</div><div class="qp-filter-list" id="qpFilterGene"></div></div>
+        <div class="qp-filter"><div class="qp-filter-label">Treatments</div><div class="qp-filter-list" id="qpFilterTreatment"></div></div>
+      </div>
+
+      <div class="vp-section" id="qpColorSection" style="display:none">
+        <div class="section-label">Bar colours</div>
+        <div class="trace-colors" id="qpColors"></div>
+      </div>
+
+      <div class="vp-section" id="qpRenameSection" style="display:none">
+        <div class="section-label">Rename labels</div>
+        <div class="qp-rename-group"><div class="qp-filter-label">Strains</div><div class="qp-rename-list" id="qpRenameStrain"></div></div>
+        <div class="qp-rename-group"><div class="qp-filter-label">Genes</div><div class="qp-rename-list" id="qpRenameGene"></div></div>
+        <div class="qp-rename-group"><div class="qp-filter-label">Treatments</div><div class="qp-rename-list" id="qpRenameTreatment"></div></div>
+        <div class="vp-field-hint">Edits are display-only; original codes still drive grouping and filtering.</div>
+      </div>
+
+      <div class="vp-section">
+        <div class="section-label">Bars</div>
+        <div class="vp-slider-field"><div class="vp-slider-head"><label>Bar opacity</label><span class="vp-val" id="qpBarOpVal">1.00</span></div><input type="range" id="qpBarOp" min="0.2" max="1" step="0.05" value="1"></div>
+        <div class="vp-slider-field"><div class="vp-slider-head"><label>Cluster width</label><span class="vp-val" id="qpClustVal">0.80</span></div><input type="range" id="qpClust" min="0.4" max="0.95" step="0.05" value="0.8"></div>
+        <div class="vp-slider-field"><div class="vp-slider-head"><label>Outline width</label><span class="vp-val" id="qpBarLwVal">0.5</span></div><input type="range" id="qpBarLw" min="0" max="3" step="0.5" value="0.5"></div>
+        <div class="vp-color-row"><span>Outline colour</span><input type="color" id="qpBarLc" value="#1a1d23"></div>
+      </div>
+
+      <div class="vp-section">
+        <div class="section-label">Error bars</div>
+        <div class="vp-field"><label>Type</label><select id="qpErr"><option value="sd">Standard deviation</option><option value="sem">Standard error (SEM)</option><option value="ci95">95% confidence interval</option><option value="none">None</option></select></div>
+        <div class="vp-slider-field"><div class="vp-slider-head"><label>Cap width</label><span class="vp-val" id="qpErrCapVal">4</span></div><input type="range" id="qpErrCap" min="0" max="12" step="1" value="4"></div>
+        <div class="vp-slider-field"><div class="vp-slider-head"><label>Thickness</label><span class="vp-val" id="qpErrThickVal">1.2</span></div><input type="range" id="qpErrThick" min="0.5" max="3" step="0.1" value="1.2"></div>
+        <div class="vp-color-row"><span>Colour</span><input type="color" id="qpErrColor" value="#1a1d23"></div>
+      </div>
+
+      <div class="vp-section">
+        <div class="section-label">Individual points</div>
+        <div class="vp-check-row"><label><input type="checkbox" id="qpPts" checked> Show replicate points</label></div>
+        <div class="vp-slider-field"><div class="vp-slider-head"><label>Size</label><span class="vp-val" id="qpPtSzVal">5</span></div><input type="range" id="qpPtSz" min="2" max="12" step="0.5" value="5"></div>
+        <div class="vp-slider-field"><div class="vp-slider-head"><label>Jitter</label><span class="vp-val" id="qpPtJitVal">1.0</span></div><input type="range" id="qpPtJit" min="0" max="2" step="0.1" value="1"></div>
+        <div class="vp-slider-field"><div class="vp-slider-head"><label>Opacity</label><span class="vp-val" id="qpPtOpVal">0.85</span></div><input type="range" id="qpPtOp" min="0.2" max="1" step="0.05" value="0.85"></div>
+        <div class="vp-field"><label>Point colour</label><select id="qpPtColor"><option value="black">Black</option><option value="match">Match bars</option><option value="open">Open circles</option></select></div>
+      </div>
+
+      <div class="vp-section">
+        <div class="section-label">Axes &amp; labels</div>
+        <div class="vp-field"><label>Title</label><input type="text" id="qpTitle" placeholder="Plot title (optional)"></div>
+        <div class="vp-field"><label>X-axis label</label><input type="text" id="qpXLab" placeholder="(auto)"></div>
+        <div class="vp-field"><label>Y-axis label</label><input type="text" id="qpYLab" value="Relative expression"></div>
+        <div class="vp-check-row"><label><input type="checkbox" id="qpLog"> Log scale (Y)</label></div>
+        <div class="vp-field-row">
+          <div class="vp-field"><label>Y min</label><input type="number" id="qpYMin" placeholder="auto" step="0.1"></div>
+          <div class="vp-field"><label>Y max</label><input type="number" id="qpYMax" placeholder="auto" step="0.1"></div>
+        </div>
+        <div class="vp-slider-field"><div class="vp-slider-head"><label>X tick angle</label><span class="vp-val" id="qpTickAngVal">0</span></div><input type="range" id="qpTickAng" min="-90" max="0" step="5" value="0"></div>
+        <div class="vp-slider-field"><div class="vp-slider-head"><label>Axis font size</label><span class="vp-val" id="qpFontVal">14</span></div><input type="range" id="qpFont" min="8" max="22" step="1" value="14"></div>
+        <div class="vp-slider-field"><div class="vp-slider-head"><label>Tick font size</label><span class="vp-val" id="qpTickVal">12</span></div><input type="range" id="qpTick" min="7" max="20" step="1" value="12"></div>
+        <div class="vp-check-row"><label><input type="checkbox" id="qpLegend" checked> Legend</label></div>
+        <div class="vp-check-row"><label><input type="checkbox" id="qpGrid" checked> Gridlines</label></div>
+      </div>
+
+      <div class="vp-section">
+        <div class="section-label">Statistics</div>
+        <div class="vp-check-row"><label><input type="checkbox" id="qpSig"> Show significance on plot</label></div>
+        <div class="vp-field"><label>Test</label><select id="qpSigTest"><option value="auto">Auto (t-test / ANOVA)</option><option value="ttest">Welch t-test (2 groups)</option><option value="anova">One-way ANOVA</option></select></div>
+        <div class="vp-field"><label>Bracket label</label><select id="qpSigLabel"><option value="both">p-value + stars</option><option value="stars">Stars only</option><option value="p">p-value only</option><option value="none">Bracket only</option></select></div>
+        <div class="vp-field-hint" id="qpSigHelp"></div>
+      </div>
+
+      <div class="vp-section">
+        <div class="section-label">Export</div>
+        <div class="vp-export-row">
+          <button class="dl-btn" id="qpPng">PNG</button>
+          <button class="pdf-btn" id="qpSvg">SVG</button>
+          <button class="pdf-btn" id="qpPdf">PDF</button>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="vp-plotcol">
+      <div class="vp-plot-empty" id="qpEmpty">
+        <div>
+          <div class="vp-empty-title">No data yet</div>
+          <div class="vp-empty-sub">Upload a triplicate CSV to plot.</div>
+        </div>
+      </div>
+      <div id="qpPlot" style="display:none"></div>
+    </div>
+  </div>
+
+  <footer> </footer>
+</div>
+</div><!-- /page-qpcr -->
+
+<script>
+let parsedData  = null;
+let traceRename = {};
+let outputCSV   = null;
+let chartInst   = null;
+let tracesData  = null;
+let currentView = 'norm';
+let yShifts     = {};
+
+const COLORS = ['#2563eb','#dc2626','#d97706','#7c3aed','#059669','#db2777','#0891b2','#65a30d'];
+
+// ── File handling ─────────────────────────────────────────────────────────
+const dropZone  = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+function loadFile(file) {
+  document.getElementById('uploadFilename').textContent = file.name;
+  document.getElementById('uploadFilename').style.display = 'block';
+  Papa.parse(file, {
+    header: true, dynamicTyping: true, skipEmptyLines: true,
+    complete: result => {
+      parsedData = result;
+      show('settings'); show('runBtn');
+      hide('chartWrap'); hide('axisControls'); hide('btnRow'); hide('yshiftPanel'); hide('errorBanner');
+    },
+    error: err => showError('CSV parse error: ' + err.message)
+  });
+}
+
+// ── Column pair detection ─────────────────────────────────────────────────
+function detectPairs(cols) {
+  const pairs = [];
+  for (let i = 0; i < cols.length - 1; i++) {
+    const c1 = cols[i].toLowerCase(), c2 = cols[i+1].toLowerCase();
+    if (c1.includes('position') && (c2.includes('absorbance') || c2.includes('abs') || c2 === 'old')) {
+      pairs.push([cols[i], cols[i+1]]); i++;
+    }
+  }
+  if (!pairs.length)
+    for (let i = 0; i < cols.length - 1; i += 2) pairs.push([cols[i], cols[i+1]]);
+  return pairs;
+}
+
+function traceName(absCol, idx) {
+  return absCol.toLowerCase().startsWith('absorbance') ? `Trace ${idx+1}` : absCol;
+}
+
+// ── Peak detection ────────────────────────────────────────────────────────
+function findPeaks(signal, minProm, minDist) {
+  const n = signal.length;
+  const peaks = [];
+  for (let i = 1; i < n-1; i++)
+    if (signal[i] > signal[i-1] && signal[i] > signal[i+1]) peaks.push(i);
+
+  function prom(pi) {
+    const h = signal[pi];
+    let lm = h;
+    for (let j = pi-1; j >= 0; j--) { if (signal[j] > h) break; lm = Math.min(lm, signal[j]); }
+    let rm = h;
+    for (let j = pi+1; j < n; j++)  { if (signal[j] > h) break; rm = Math.min(rm, signal[j]); }
+    return h - Math.max(lm, rm);
+  }
+
+  let f = peaks.filter(p => prom(p) >= minProm);
+  f.sort((a, b) => signal[b] - signal[a]);
+  const kept = [];
+  for (const p of f) if (kept.every(k => Math.abs(k-p) >= minDist)) kept.push(p);
+  return kept;
+}
+
+// ── Main analysis ─────────────────────────────────────────────────────────
+function runAnalysis() {
+  if (!parsedData) return;
+  hide('errorBanner');
+
+  const prominence = parseFloat(document.getElementById('prominence').value) || 0.05;
+  const minDist    = parseInt(document.getElementById('minDist').value)      || 5;
+  const winStart   = parseFloat(document.getElementById('windowStart').value) / 100 || 0.30;
+  const winEnd     = parseFloat(document.getElementById('windowEnd').value)   / 100 || 0.70;
+
+  const rows  = parsedData.data;
+  const cols  = parsedData.meta.fields;
+  const pairs = detectPairs(cols);
+  if (!pairs.length) { showError('No (Position, Absorbance) column pairs detected.'); return; }
+
+  const traces = [];
+  const errors = [];
+
+  for (let idx = 0; idx < pairs.length; idx++) {
+    const [posCol, absCol] = pairs[idx];
+    const name = traceName(absCol, idx);
+
+    const pos = [], ab = [];
+    for (const row of rows) {
+      const p = row[posCol], a = row[absCol];
+      if (p != null && a != null && !isNaN(p) && !isNaN(a)) { pos.push(+p); ab.push(+a); }
+    }
+    if (pos.length < 20) { errors.push(`'${name}': too few points (${pos.length})`); continue; }
+
+    // Search window
+    const posMin = Math.min(...pos), posMax = Math.max(...pos);
+    const posRange = posMax - posMin;
+    const searchLo = posMin + winStart * posRange;
+    const searchHi = posMin + winEnd   * posRange;
+
+    // Baseline = minimum value inside window — no inversion applied
+    const winIdxs = pos.map((p, i) => i).filter(i => pos[i] >= searchLo && pos[i] <= searchHi);
+    if (!winIdxs.length) { errors.push(`'${name}': no data in search window`); continue; }
+
+    const winMin = Math.min(...winIdxs.map(i => ab[i]));
+    const abBS   = ab.map(v => v - winMin);  // window floor → 0
+
+    // Peak detection
+    let peakIdxs = findPeaks(abBS, prominence, minDist);
+    if (peakIdxs.length < 2)
+      peakIdxs = findPeaks(abBS, prominence * 0.25, Math.max(2, Math.floor(minDist / 2)));
+
+    const windowPeaks = peakIdxs.filter(i => pos[i] >= searchLo && pos[i] <= searchHi);
+    if (!windowPeaks.length) {
+      errors.push(`'${name}': no peaks in ${Math.round(winStart*100)}–${Math.round(winEnd*100)}% window — try adjusting settings`);
+      continue;
+    }
+
+    const monoIdx     = windowPeaks.reduce((b, i) => abBS[i] > abBS[b] ? i : b, windowPeaks[0]);
+    const monoPosOrig = pos[monoIdx];
+    const monoAbsBS   = abBS[monoIdx];
+    const abNorm      = abBS.map(v => +(v / monoAbsBS).toFixed(8));
+    const posShifted  = pos.map(p => +(p - monoPosOrig).toFixed(6));
+    const polyIdx     = peakIdxs.reduce((b, i) => abBS[i] > abBS[b] ? i : b, peakIdxs[0]);
+
+    traces.push({
+      name, pos: posShifted, abBS, abNorm,
+      monoAbsBS, baseline: winMin, monoPosOrig, polyIdx, monoIdx,
+      color: COLORS[idx % COLORS.length]
+    });
+  }
+
+  if (errors.length) showError(errors.join('<br>'));
+  if (!traces.length) return;
+  tracesData = traces;
+  yShifts    = {};
+
+  // ── Build CSV ─────────────────────────────────────────────────────────
+  const posHeader = 'Position_mm_rel_monosome';
+  const bsCols    = traces.map(t => `${t.name}_baselineSub_AU`);
+  const normCols  = traces.map(t => `${t.name}_normalized`);
+  const allHdrs   = [posHeader, ...bsCols, ...normCols];
+
+  const posMaps = traces.map(t => {
+    const m = new Map();
+    t.pos.forEach((p, i) => m.set(p.toFixed(6), i));
+    return m;
+  });
+  const allPos = [...new Set(traces.flatMap(t => t.pos))].sort((a, b) => a - b);
+
+  const csvLines = [allHdrs.join(',')];
+  for (const p of allPos) {
+    const key = p.toFixed(6);
+    const row = [p];
+    traces.forEach((t, ti) => {
+      const i = posMaps[ti].get(key);
+      row.push(i !== undefined ? +t.abBS[i].toFixed(8) : '');
+    });
+    traces.forEach((t, ti) => {
+      const i = posMaps[ti].get(key);
+      row.push(i !== undefined ? +t.abNorm[i].toFixed(8) : '');
+    });
+    csvLines.push(row.join(','));
+  }
+  outputCSV = csvLines.join('\n');
+
+  // ── Render ────────────────────────────────────────────────────────────
+  currentView = 'norm';
+  document.getElementById('btnNorm').classList.add('active');
+  document.getElementById('btnAbs').classList.remove('active');
+  renderChart();
+  show('chartWrap'); show('appearancePanel'); show('axisControls'); show('btnRow');
+  buildTraceColors();
+}
+
+// ── Chart rendering ───────────────────────────────────────────────────────
+function renderChart() {
+  if (!tracesData) return;
+  const isNorm  = currentView === 'norm';
+  const isShift = currentView === 'shift';
+
+  function downsample(pos, vals, maxPts) {
+    if (pos.length <= maxPts) return { pos, vals };
+    const step = Math.ceil(pos.length / maxPts);
+    const dp = [], dv = [];
+    for (let i = 0; i < pos.length; i += step) { dp.push(pos[i]); dv.push(vals[i]); }
+    return { pos: dp, vals: dv };
+  }
+
+  const lw      = parseFloat(document.getElementById('rbLw').value)  || 1.6;
+  const tenRaw  = parseFloat(document.getElementById('rbTen').value);
+  const ten     = isNaN(tenRaw) ? 0.15 : tenRaw;
+  const op      = parseFloat(document.getElementById('rbOp').value)  || 1;
+  const axFont  = parseInt(document.getElementById('rbAx').value, 10) || 11;
+  const tkFont  = parseInt(document.getElementById('rbTk').value, 10) || 10;
+  const showLeg = document.getElementById('rbLegend').checked;
+  const xLabUsr = document.getElementById('rbXLab').value.trim();
+  const yLabUsr = document.getElementById('rbYLab').value.trim();
+
+  const datasets = tracesData.map(t => {
+    const baseVals = (isNorm || isShift) ? t.abNorm : t.abBS;
+    const offset   = isShift ? (yShifts[t.name] || 0) : 0;
+    const vals     = baseVals.map(v => v + offset);
+    const { pos: dp, vals: dv } = downsample(t.pos, vals, 800);
+    return {
+      label: traceRename[t.name] != null ? traceRename[t.name] : t.name,
+      data: dp.map((x, i) => ({ x, y: dv[i] })),
+      borderColor: op < 1 ? hexToRgba(t.color, op) : t.color,
+      backgroundColor: 'transparent',
+      borderWidth: lw, pointRadius: 0, tension: ten,
+    };
+  });
+
+  document.getElementById('chartTitle').textContent =
+    isShift ? 'Y-shifted traces' : (isNorm ? 'Normalized traces' : 'Absolute traces');
+  document.getElementById('chartSub').textContent =
+    isShift ? 'Normalized · drag sliders below to offset each trace vertically'
+    : (isNorm ? 'Baseline subtracted · Monosome at x = 0, y = 1'
+               : 'Baseline subtracted · Monosome at x = 0 · Absolute AU');
+
+  const yTitleAuto = isNorm || isShift ? 'Normalized absorbance (monosome = 1)' : 'Absorbance (AU)';
+
+  if (chartInst) chartInst.destroy();
+  chartInst = new Chart(document.getElementById('chart').getContext('2d'), {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      animation: false, responsive: true, showLine: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: showLeg, labels: { color: '#1a1d23', font: { family: "'IBM Plex Sans'", size: 12 }, boxWidth: 14 } },
+        tooltip: {
+          backgroundColor: '#fff', borderColor: '#e2e4e9', borderWidth: 1,
+          titleColor: '#1a1d23', bodyColor: '#6b7280',
+          titleFont: { family: "'IBM Plex Mono'", size: 11 },
+          bodyFont:  { family: "'IBM Plex Mono'", size: 11 },
+          callbacks: {
+            title: items => `x = ${items[0].parsed.x.toFixed(2)} mm`,
+            label: item  => ` ${item.dataset.label}: ${item.parsed.y.toFixed(4)}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear', ...getXScale(),
+          title: { display: true, text: xLabUsr || 'Gradient Fraction', color: '#6b7280', font: { family: "'IBM Plex Sans'", size: axFont } },
+          grid: { color: '#f1f3f5' },
+          ticks: { color: '#6b7280', font: { family: "'IBM Plex Mono'", size: tkFont } }
+        },
+        y: {
+          min: isShift ? undefined : 0, ...getYScale(),
+          title: { display: true, text: yLabUsr || yTitleAuto, color: '#6b7280', font: { family: "'IBM Plex Sans'", size: axFont } },
+          grid: { color: '#f1f3f5' },
+          ticks: { color: '#6b7280', font: { family: "'IBM Plex Mono'", size: tkFont } }
+        }
+      }
+    }
+  });
+  updateAxisSliders();
+}
+
+// ── View toggle ───────────────────────────────────────────────────────────
+function setView(view) {
+  currentView = view;
+  document.getElementById('btnNorm').classList.toggle('active',  view === 'norm');
+  document.getElementById('btnAbs').classList.toggle('active',   view === 'abs');
+  document.getElementById('btnShift').classList.toggle('active', view === 'shift');
+  document.getElementById('yMax').value = '';
+  if (view === 'shift') {
+    buildYShiftPanel();
+    show('yshiftPanel');
+  } else {
+    hide('yshiftPanel');
+  }
+  renderChart(); applyAxisLimits();
+}
+
+// ── Y-Shift panel ─────────────────────────────────────────────────────────
+function buildYShiftPanel() {
+  if (!tracesData) return;
+  const container = document.getElementById('yshiftSliders');
+  container.innerHTML = '';
+  tracesData.forEach(t => {
+    if (!(t.name in yShifts)) yShifts[t.name] = 0;
+    const row = document.createElement('div');
+    row.className = 'yshift-row';
+    const swatch = document.createElement('div');
+    swatch.className = 'yshift-swatch';
+    swatch.style.background = t.color;
+    const label = document.createElement('span');
+    label.className = 'yshift-name';
+    label.textContent = traceRename[t.name] != null ? traceRename[t.name] : t.name;
+    const slider = document.createElement('input');
+    slider.type = 'range'; slider.className = 'yshift-slider';
+    slider.min = -5; slider.max = 5; slider.step = 0.05;
+    slider.value = yShifts[t.name];
+    const valLabel = document.createElement('span');
+    valLabel.className = 'yshift-val';
+    valLabel.textContent = (yShifts[t.name] >= 0 ? '+' : '') + yShifts[t.name].toFixed(2);
+    slider.addEventListener('input', () => {
+      yShifts[t.name] = parseFloat(slider.value);
+      valLabel.textContent = (yShifts[t.name] >= 0 ? '+' : '') + yShifts[t.name].toFixed(2);
+      renderChart(); applyAxisLimits();
+    });
+    row.append(swatch, label, slider, valLabel);
+    container.appendChild(row);
+  });
+}
+
+function resetYShifts() {
+  if (!tracesData) return;
+  tracesData.forEach(t => { yShifts[t.name] = 0; });
+  buildYShiftPanel();
+  renderChart(); applyAxisLimits();
+}
+
+// ── Axis ──────────────────────────────────────────────────────────────────
+function getXScale() {
+  const out = {};
+  const mn = document.getElementById('xMin').value, mx = document.getElementById('xMax').value;
+  if (mn !== '') out.min = parseFloat(mn);
+  if (mx !== '') out.max = parseFloat(mx);
+  return out;
+}
+function getYScale() {
+  const out = {};
+  const mn = document.getElementById('yMin').value, mx = document.getElementById('yMax').value;
+  if (mn !== '') out.min = parseFloat(mn);
+  if (mx !== '') out.max = parseFloat(mx);
+  return out;
+}
+function applyAxisLimits() {
+  if (!chartInst) return;
+  const xs = getXScale(), ys = getYScale();
+  chartInst.options.scales.x.min = xs.min ?? undefined;
+  chartInst.options.scales.x.max = xs.max ?? undefined;
+  chartInst.options.scales.y.min = ys.min !== undefined ? ys.min : 0;
+  chartInst.options.scales.y.max = ys.max ?? undefined;
+  chartInst.update();
+}
+function resetAxisLimits() {
+  ['xMin','xMax','yMax'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('yMin').value = '0';
+  updateAxisSliders();
+  applyAxisLimits();
+}
+
+// ── Axis range sliders (kept in sync with the number inputs) ───────────────
+function dataExtent() {
+  const isNorm = currentView === 'norm', isShift = currentView === 'shift';
+  let xLo = Infinity, xHi = -Infinity, yLo = Infinity, yHi = -Infinity;
+  (tracesData || []).forEach(t => {
+    const base = (isNorm || isShift) ? t.abNorm : t.abBS;
+    const off  = isShift ? (yShifts[t.name] || 0) : 0;
+    for (let i = 0; i < t.pos.length; i++) {
+      const x = t.pos[i], y = base[i] + off;
+      if (x < xLo) xLo = x; if (x > xHi) xHi = x;
+      if (y < yLo) yLo = y; if (y > yHi) yHi = y;
+    }
+  });
+  if (!isFinite(xLo)) { xLo = 0; xHi = 1; yLo = 0; yHi = 1; }
+  return { xLo, xHi, yLo, yHi };
+}
+function niceStep(range) {
+  if (!(range > 0)) return 0.01;
+  const raw = range / 200, mag = Math.pow(10, Math.floor(Math.log10(raw))), n = raw / mag;
+  return (n < 1.5 ? 1 : n < 3.5 ? 2 : n < 7.5 ? 5 : 10) * mag;
+}
+function stepDecimals(step) {
+  const s = parseFloat(step);
+  if (!(s > 0) || s >= 1) return 0;
+  return Math.min(4, Math.ceil(-Math.log10(s)));
+}
+function setSlider(sliderId, numId, lo, hi, fallback) {
+  const s = document.getElementById(sliderId), num = document.getElementById(numId);
+  if (!s || !num) return;
+  const pad = (hi - lo) * 0.05 || 0.5;
+  const mn = lo - pad, mx = hi + pad;
+  s.min = mn; s.max = mx; s.step = niceStep(mx - mn);
+  const v = num.value !== '' ? parseFloat(num.value) : fallback;
+  s.value = Math.min(mx, Math.max(mn, v));
+}
+function updateAxisSliders() {
+  if (!tracesData) return;
+  const e = dataExtent();
+  const isShift = currentView === 'shift';
+  setSlider('xMinR', 'xMin', e.xLo, e.xHi, e.xLo);
+  setSlider('xMaxR', 'xMax', e.xLo, e.xHi, e.xHi);
+  const yLoEff = isShift ? e.yLo : Math.min(0, e.yLo);
+  setSlider('yMinR', 'yMin', yLoEff, e.yHi, isShift ? e.yLo : 0);
+  setSlider('yMaxR', 'yMax', yLoEff, e.yHi, e.yHi);
+}
+
+// ── Download ──────────────────────────────────────────────────────────────
+function downloadCSV() {
+  if (!outputCSV) return;
+  const blob = new Blob([outputCSV], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'normalized_aligned.csv';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+function printChart() { window.print(); }
+
+// ── Vector export for the polysome chart (built from the live data + scales, so it is true vector) ──
+function buildPolysomeSVG(W, H) {
+  if (!chartInst || !chartInst.scales) return null;
+  const ds = chartInst.data.datasets || [];
+  const xs = chartInst.scales.x, ys = chartInst.scales.y;
+  const x0 = xs.min, x1 = xs.max, y0 = ys.min, y1 = ys.max;
+  if (!(x1 > x0) || !(y1 > y0)) return null;
+  const m = { l: 74, r: 26, t: 22, b: 58 }, pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const px = v => m.l + (v - x0) / (x1 - x0) * pw;
+  const py = v => m.t + (1 - (v - y0) / (y1 - y0)) * ph;
+  const esc = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const fmt = v => (Math.abs(v) >= 1000 || (v !== 0 && Math.abs(v) < 0.01)) ? v.toExponential(1) : String(+v.toFixed(3));
+  function ticks(lo, hi, n) {
+    const span = hi - lo, step0 = span / n, mag = Math.pow(10, Math.floor(Math.log10(step0))), norm = step0 / mag;
+    const step = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag, out = [];
+    for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-6; v += step) out.push(+v.toFixed(10));
+    return out;
+  }
+  const xt = ticks(x0, x1, 6), yt = ticks(y0, y1, 6), NS = 'http://www.w3.org/2000/svg';
+  let s = '<svg xmlns="' + NS + '" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" font-family="IBM Plex Sans, Arial, sans-serif">';
+  s += '<rect width="' + W + '" height="' + H + '" fill="#ffffff"/>';
+  xt.forEach(t => { const X = px(t).toFixed(1); s += '<line x1="' + X + '" y1="' + m.t + '" x2="' + X + '" y2="' + (m.t + ph) + '" stroke="#f1f3f5"/>'; });
+  yt.forEach(t => { const Y = py(t).toFixed(1); s += '<line x1="' + m.l + '" y1="' + Y + '" x2="' + (m.l + pw) + '" y2="' + Y + '" stroke="#f1f3f5"/>'; });
+  s += '<line x1="' + m.l + '" y1="' + m.t + '" x2="' + m.l + '" y2="' + (m.t + ph) + '" stroke="#cbd2d9"/>';
+  s += '<line x1="' + m.l + '" y1="' + (m.t + ph) + '" x2="' + (m.l + pw) + '" y2="' + (m.t + ph) + '" stroke="#cbd2d9"/>';
+  xt.forEach(t => { const X = px(t).toFixed(1); s += '<line x1="' + X + '" y1="' + (m.t + ph) + '" x2="' + X + '" y2="' + (m.t + ph + 5) + '" stroke="#cbd2d9"/><text x="' + X + '" y="' + (m.t + ph + 18) + '" text-anchor="middle" font-size="12" fill="#444">' + fmt(t) + '</text>'; });
+  yt.forEach(t => { const Y = py(t); s += '<line x1="' + (m.l - 5) + '" y1="' + Y.toFixed(1) + '" x2="' + m.l + '" y2="' + Y.toFixed(1) + '" stroke="#cbd2d9"/><text x="' + (m.l - 9) + '" y="' + (Y + 4).toFixed(1) + '" text-anchor="end" font-size="12" fill="#444">' + fmt(t) + '</text>'; });
+  const ox = chartInst.options.scales.x.title, oy = chartInst.options.scales.y.title;
+  s += '<text x="' + (m.l + pw / 2) + '" y="' + (H - 12) + '" text-anchor="middle" font-size="13" fill="#1a1d23">' + esc(ox && ox.text) + '</text>';
+  s += '<text transform="translate(16 ' + (m.t + ph / 2).toFixed(1) + ') rotate(-90)" text-anchor="middle" font-size="13" fill="#1a1d23">' + esc(oy && oy.text) + '</text>';
+  s += '<clipPath id="polyClip"><rect x="' + m.l + '" y="' + m.t + '" width="' + pw + '" height="' + ph + '"/></clipPath><g clip-path="url(#polyClip)">';
+  ds.forEach((d, i) => {
+    const meta = chartInst.getDatasetMeta(i); if (meta && meta.hidden) return;
+    const pts = (d.data || []).filter(p => p && p.x != null && p.y != null && isFinite(p.x) && isFinite(p.y)).map(p => px(p.x).toFixed(1) + ',' + py(p.y).toFixed(1)).join(' ');
+    if (!pts) return;
+    s += '<polyline points="' + pts + '" fill="none" stroke="' + (d.borderColor || '#2563eb') + '" stroke-width="' + (d.borderWidth || 1.5) + '" stroke-linejoin="round" stroke-linecap="round"/>';
+  });
+  s += '</g>';
+  const leg = chartInst.options.plugins && chartInst.options.plugins.legend;
+  if (leg && leg.display !== false) {
+    let ly = m.t + 8;
+    ds.forEach((d, i) => {
+      const me = chartInst.getDatasetMeta(i); if (me && me.hidden) return;
+      const label = esc(d.label || '');
+      s += '<text x="' + (m.l + pw - 4) + '" y="' + (ly + 1) + '" text-anchor="end" font-size="12" fill="#333">' + label + '</text>';
+      s += '<rect x="' + (m.l + pw - 4 - label.length * 6.6 - 18) + '" y="' + (ly - 9) + '" width="12" height="12" fill="' + (d.borderColor || '#2563eb') + '"/>';
+      ly += 18;
+    });
+  }
+  return s + '</svg>';
+}
+function downloadPolysomeSVG() {
+  const svg = buildPolysomeSVG(1100, 700);
+  if (!svg) { alert('Load and plot data first.'); return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+  a.download = 'polysome_profile.svg'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+}
+async function downloadPolysomePDF() {
+  const W = 1100, H = 700, svg = buildPolysomeSVG(W, H);
+  if (!svg) { alert('Load and plot data first.'); return; }
+  if (!window.jspdf || !window.jspdf.jsPDF) { alert('PDF library did not load \u2014 check your connection, or use the SVG button.'); return; }
+  const { jsPDF } = window.jspdf;
+  try {
+    const svgEl = document.importNode(new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement, true);
+    const holder = document.createElement('div'); holder.style.cssText = 'position:fixed;left:-99999px;top:0;'; holder.appendChild(svgEl); document.body.appendChild(holder);
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: [W, H] });
+    if (typeof pdf.svg === 'function') await pdf.svg(svgEl, { x: 0, y: 0, width: W, height: H });
+    else if (typeof window.svg2pdf === 'function') await window.svg2pdf(svgEl, pdf, { x: 0, y: 0, width: W, height: H });
+    else throw new Error('svg2pdf unavailable');
+    pdf.save('polysome_profile.pdf'); document.body.removeChild(holder);
+  } catch (e) {
+    try { const img = chartInst.toBase64Image('image/png', 1); const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: [W, H] }); pdf.addImage(img, 'PNG', 0, 0, W, H); pdf.save('polysome_profile.pdf'); alert('Couldn\u2019t build a vector PDF \u2014 saved a raster PDF instead. Use the SVG button for a fully editable figure.'); }
+    catch (e2) { alert('PDF export failed: ' + e2.message + '. Use the SVG button instead.'); }
+  }
+}
+
+function show(id) { document.getElementById(id).classList.add('visible'); }
+function hide(id) { document.getElementById(id).classList.remove('visible'); }
+function showError(msg) { const el = document.getElementById('errorBanner'); el.innerHTML = msg; el.classList.add('visible'); }
+
+// ── Plot appearance: per-trace colours, line styling, labels ───────────────
+function hexToRgba(hex, a) {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex || '');
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+function buildTraceColors() {
+  if (!tracesData) return;
+  const c = document.getElementById('traceColors');
+  c.innerHTML = '';
+  tracesData.forEach(t => {
+    const row = document.createElement('div');
+    row.className = 'trace-edit-row';
+    const name = document.createElement('input');
+    name.type = 'text';
+    name.className = 'trace-name-input';
+    name.value = traceRename[t.name] != null ? traceRename[t.name] : t.name;
+    name.title = 'Rename trace (original: ' + t.name + ')';
+    name.addEventListener('input', () => {
+      if (name.value.trim() === '' || name.value === t.name) delete traceRename[t.name]; else traceRename[t.name] = name.value;
+      renderChart(); applyAxisLimits();
+      if (currentView === 'shift') buildYShiftPanel();
+    });
+    const input = document.createElement('input');
+    input.type = 'color';
+    input.value = /^#[0-9a-fA-F]{6}$/.test(t.color) ? t.color : '#2563eb';
+    input.addEventListener('input', () => {
+      t.color = input.value;
+      renderChart(); applyAxisLimits();
+      if (currentView === 'shift') buildYShiftPanel();
+    });
+    row.append(name, input);
+    c.appendChild(row);
+  });
+}
+
+// appearance control wiring (elements always present; act only once a chart exists)
+[['rbLw','rbLwVal',1],['rbTen','rbTenVal',2],['rbOp','rbOpVal',2],['rbAx','rbAxVal',0],['rbTk','rbTkVal',0]].forEach(([id, valId, dec]) => {
+  const s = document.getElementById(id), v = document.getElementById(valId);
+  if (!s || !v) return;
+  const upd = () => { v.textContent = parseFloat(s.value).toFixed(dec); };
+  upd();
+  s.addEventListener('input', () => { upd(); if (tracesData) { renderChart(); applyAxisLimits(); } });
+});
+['rbXLab', 'rbYLab'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', () => { if (tracesData) { renderChart(); applyAxisLimits(); } });
+});
+(() => {
+  const el = document.getElementById('rbLegend');
+  if (el) el.addEventListener('change', () => { if (tracesData) { renderChart(); applyAxisLimits(); } });
+})();
+
+// axis range sliders <-> number inputs (both drive the chart live)
+[['xMinR','xMin'],['xMaxR','xMax'],['yMinR','yMin'],['yMaxR','yMax']].forEach(([sid, nid]) => {
+  const s = document.getElementById(sid), n = document.getElementById(nid);
+  if (!s || !n) return;
+  s.addEventListener('input', () => {
+    n.value = parseFloat(s.value).toFixed(stepDecimals(s.step));
+    applyAxisLimits();
+  });
+  n.addEventListener('change', () => {
+    if (n.value !== '') {
+      const mn = parseFloat(s.min), mx = parseFloat(s.max);
+      if (isFinite(mn) && isFinite(mx)) s.value = Math.min(mx, Math.max(mn, parseFloat(n.value)));
+    }
+    applyAxisLimits();
+  });
+});
+</script>
+
+<script>
+/* ── Page navigation ──────────────────────────────────────────────────── */
+document.querySelectorAll('.topnav-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const page = tab.dataset.page;
+    document.querySelectorAll('.topnav-tab').forEach(t => t.classList.toggle('active', t === tab));
+    document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + page));
+    if (page === 'volcano' && window.__vpResize) window.__vpResize();
+    if (page === 'qpcr' && window.__qpResize) window.__qpResize();
+  });
+});
+
+/* ── Shared vector export ─────────────────────────────────────────────────
+   Builds a clean, lightweight SVG directly from the finished Plotly figure
+   (data + computed layout), sized to match the on-screen plot. True vector,
+   fonts at on-screen size, logically grouped, and simple enough that both
+   Illustrator and svg2pdf handle it — unlike Plotly's own nested SVG. */
+function plotlyToSVG(gd) {
+  const fl = gd && gd._fullLayout;
+  if (!fl || !fl.xaxis || !fl.yaxis) return null;
+  const xa = fl.xaxis, ya = fl.yaxis;
+  const xL = xa._length, yL = ya._length, xOff = xa._offset, yOff = ya._offset;
+  if (!(xL > 0) || !(yL > 0)) return null;
+  const W = Math.round(fl.width), H = Math.round(fl.height);
+  const X0 = xa.range[0], X1 = xa.range[1], Y0 = ya.range[0], Y1 = ya.range[1];
+  const xlog = xa.type === 'log', ylog = ya.type === 'log';
+  const cx = c => xOff + (c - X0) / (X1 - X0) * xL;
+  const cy = c => yOff + (1 - (c - Y0) / (Y1 - Y0)) * yL;
+  const dx = v => cx(xlog ? Math.log10(v) : v);
+  const dy = v => cy(ylog ? Math.log10(v) : v);
+  const pX = p => xOff + p * xL, pY = p => (yOff + yL) - p * yL;
+  const rx = (v, ref) => ref === 'paper' ? pX(v) : dx(v);
+  const ryf = (v, ref) => ref === 'paper' ? pY(v) : dy(v);
+  const clY = y => Math.max(yOff, Math.min(yOff + yL, y));
+  const n = x => Math.round(x * 100) / 100;
+  const esc = t => String(t == null ? '' : t).replace(/<\/?(sub|sup|b|i|br)\s*\/?>/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const fnt = (fl.font && fl.font.size) || 12;
+  const tF = (xa.tickfont && xa.tickfont.size) || fnt;
+  const lay = gd.layout || {};
+  const NS = 'http://www.w3.org/2000/svg';
+  function fbTicks(lo, hi, isLog) {
+    if (isLog) { const o = []; for (let e = Math.ceil(lo); e <= Math.floor(hi); e++) o.push({ c: e, text: String(Math.pow(10, e)) }); return o; }
+    const span = hi - lo, s0 = span / 6, mag = Math.pow(10, Math.floor(Math.log10(s0))), nm = s0 / mag, st = (nm < 1.5 ? 1 : nm < 3 ? 2 : nm < 7 ? 5 : 10) * mag, o = [];
+    for (let v = Math.ceil(lo / st) * st; v <= hi + st * 1e-6; v += st) o.push({ c: v, text: String(+v.toFixed(6)) });
+    return o;
+  }
+  const getVals = (aFull, aLay, isLog, lo, hi) => {
+    if (aFull._vals && aFull._vals.length) return aFull._vals.map(t => ({ c: t.x, text: t.text }));
+    if (aLay && aLay.tickmode === 'array' && aLay.tickvals) return aLay.tickvals.map((v, i) => ({ c: isLog ? Math.log10(v) : v, text: aLay.ticktext && aLay.ticktext[i] != null ? aLay.ticktext[i] : String(v) }));
+    return fbTicks(lo, hi, isLog);
+  };
+  const xticks = getVals(xa, lay.xaxis, xlog, X0, X1).map(t => ({ x: cx(t.c), text: t.text }));
+  const yticks = getVals(ya, lay.yaxis, ylog, Y0, Y1).map(t => ({ y: cy(t.c), text: t.text }));
+
+  let o = '<svg xmlns="' + NS + '" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" font-family="IBM Plex Sans, Arial, sans-serif">';
+  o += '<rect width="' + W + '" height="' + H + '" fill="#ffffff"/>';
+  let grid = '';
+  if (ya.showgrid !== false) yticks.forEach(t => grid += '<line x1="' + n(xOff) + '" y1="' + n(t.y) + '" x2="' + n(xOff + xL) + '" y2="' + n(t.y) + '" stroke="#eef1f4"/>');
+  if (xa.showgrid) xticks.forEach(t => grid += '<line x1="' + n(t.x) + '" y1="' + n(yOff) + '" x2="' + n(t.x) + '" y2="' + n(yOff + yL) + '" stroke="#eef1f4"/>');
+  o += '<g class="grid">' + grid + '</g>';
+
+  let bars = '', errs = '', ptsG = '';
+  (gd.data || []).forEach(tr => {
+    if (tr.visible === false || tr.visible === 'legendonly') return;
+    const mk = tr.marker || {};
+    if (tr.type === 'bar') {
+      const xs = tr.x || [], ys = tr.y || [], wdt = tr.width || 0.5, mc = mk.color, op = mk.opacity != null ? mk.opacity : 1;
+      const lw = (mk.line && mk.line.width) || 0, lc = (mk.line && mk.line.color) || '#000';
+      const ey = tr.error_y || {}, base = ylog ? (yOff + yL) : clY(dy(0)), halfw = (wdt / 2) / (X1 - X0) * xL;
+      for (let i = 0; i < xs.length; i++) {
+        if (ys[i] == null) continue;
+        const p = cx(xlog ? Math.log10(xs[i]) : xs[i]), top = dy(ys[i]), col = Array.isArray(mc) ? (mc[i] || '#888') : (mc || '#888');
+        bars += '<rect x="' + n(p - halfw) + '" y="' + n(Math.min(top, base)) + '" width="' + n(halfw * 2) + '" height="' + n(Math.abs(base - top)) + '" fill="' + col + '" fill-opacity="' + op + '"' + (lw ? ' stroke="' + lc + '" stroke-width="' + lw + '"' : '') + '/>';
+        if (ey.visible !== false && ey.array) {
+          const up = dy(ys[i] + (ey.array[i] || 0)), lo = dy(ys[i] - ((ey.arrayminus ? ey.arrayminus[i] : ey.array[i]) || 0)), cap = ey.width || 3, ec = ey.color || '#333', et = ey.thickness || 1;
+          errs += '<line x1="' + n(p) + '" y1="' + n(up) + '" x2="' + n(p) + '" y2="' + n(lo) + '" stroke="' + ec + '" stroke-width="' + et + '"/><line x1="' + n(p - cap) + '" y1="' + n(up) + '" x2="' + n(p + cap) + '" y2="' + n(up) + '" stroke="' + ec + '" stroke-width="' + et + '"/><line x1="' + n(p - cap) + '" y1="' + n(lo) + '" x2="' + n(p + cap) + '" y2="' + n(lo) + '" stroke="' + ec + '" stroke-width="' + et + '"/>';
+        }
+      }
+    } else if (tr.type === 'scatter' && (!tr.mode || tr.mode.indexOf('markers') >= 0)) {
+      const xs = tr.x || [], ys = tr.y || [], mc = mk.color, sz = mk.size || 6, op = mk.opacity != null ? mk.opacity : 1;
+      const sym = String(mk.symbol || 'circle'), lw = (mk.line && mk.line.width) || 0, lc = (mk.line && mk.line.color) || '#fff', r = sz / 2;
+      let layer = '';
+      for (let i = 0; i < xs.length; i++) {
+        if (xs[i] == null || ys[i] == null) continue;
+        const col = Array.isArray(mc) ? (mc[i] || '#888') : (mc || '#888'), a = dx(xs[i]), b = dy(ys[i]);
+        if (sym.indexOf('open') >= 0) layer += '<circle cx="' + n(a) + '" cy="' + n(b) + '" r="' + n(r) + '" fill="none" stroke="' + col + '" stroke-width="' + Math.max(1, lw) + '" opacity="' + op + '"/>';
+        else layer += '<circle cx="' + n(a) + '" cy="' + n(b) + '" r="' + n(r) + '" fill="' + col + '" opacity="' + op + '"' + (lw ? ' stroke="' + lc + '" stroke-width="' + lw + '"' : '') + '/>';
+      }
+      ptsG += '<g class="' + esc(tr.name || 'points') + '">' + layer + '</g>';
+    }
+  });
+  o += '<g class="bars">' + bars + '</g><g class="errorbars">' + errs + '</g><g class="points">' + ptsG + '</g>';
+
+  let shp = '';
+  (lay.shapes || []).forEach(sh => {
+    if (sh.type !== 'line') return;
+    const ln = sh.line || {}, dash = ln.dash === 'dash' ? ' stroke-dasharray="5,4"' : '';
+    shp += '<line x1="' + n(rx(sh.x0, sh.xref)) + '" y1="' + n(ryf(sh.y0, sh.yref)) + '" x2="' + n(rx(sh.x1, sh.xref)) + '" y2="' + n(ryf(sh.y1, sh.yref)) + '" stroke="' + (ln.color || '#888') + '" stroke-width="' + (ln.width || 1) + '"' + dash + '/>';
+  });
+  o += '<g class="shapes">' + shp + '</g>';
+
+  let ax = '<line x1="' + n(xOff) + '" y1="' + n(yOff) + '" x2="' + n(xOff) + '" y2="' + n(yOff + yL) + '" stroke="#cbd2d9"/><line x1="' + n(xOff) + '" y1="' + n(yOff + yL) + '" x2="' + n(xOff + xL) + '" y2="' + n(yOff + yL) + '" stroke="#cbd2d9"/>';
+  xticks.forEach(t => ax += '<line x1="' + n(t.x) + '" y1="' + n(yOff + yL) + '" x2="' + n(t.x) + '" y2="' + n(yOff + yL + 5) + '" stroke="#cbd2d9"/>');
+  yticks.forEach(t => ax += '<line x1="' + n(xOff - 5) + '" y1="' + n(t.y) + '" x2="' + n(xOff) + '" y2="' + n(t.y) + '" stroke="#cbd2d9"/><text x="' + n(xOff - 8) + '" y="' + n(t.y + tF * 0.34) + '" text-anchor="end" font-size="' + tF + '" fill="#444">' + esc(t.text) + '</text>');
+  o += '<g class="axes">' + ax + '</g>';
+
+  const xang = xa.tickangle || 0;
+  let xlab = '';
+  xticks.forEach(t => {
+    if (xang) xlab += '<text x="' + n(t.x) + '" y="' + n(yOff + yL + 15) + '" text-anchor="end" font-size="' + tF + '" fill="#444" transform="rotate(' + xang + ' ' + n(t.x) + ' ' + n(yOff + yL + 15) + ')">' + esc(t.text) + '</text>';
+    else xlab += '<text x="' + n(t.x) + '" y="' + n(yOff + yL + tF + 5) + '" text-anchor="middle" font-size="' + tF + '" fill="#444">' + esc(t.text) + '</text>';
+  });
+  o += '<g class="xticklabels">' + xlab + '</g>';
+
+  let anns = '';
+  (lay.annotations || []).forEach(an => {
+    if (an.visible === false || an.text == null) return;
+    const axx = rx(an.x, an.xref || 'x'), ayy = ryf(an.y, an.yref || 'y');
+    const fs = (an.font && an.font.size) || fnt, fc = (an.font && an.font.color) || '#333';
+    let tX = axx, tY = ayy;
+    if (an.showarrow) { tX = axx + (an.ax || 0); tY = ayy + (an.ay || 0); anns += '<line x1="' + n(tX) + '" y1="' + n(tY) + '" x2="' + n(axx) + '" y2="' + n(ayy) + '" stroke="' + (an.arrowcolor || '#9aa0a6') + '" stroke-width="' + (an.arrowwidth || 1) + '"/>'; }
+    const ta = { left: 'start', center: 'middle', right: 'end' }[an.xanchor] || 'middle';
+    const vy = an.yanchor === 'top' ? fs * 0.85 : an.yanchor === 'bottom' ? -fs * 0.15 : fs * 0.34;
+    const rot = an.textangle ? ' transform="rotate(' + an.textangle + ' ' + n(tX) + ' ' + n(tY + vy) + ')"' : '';
+    anns += '<text x="' + n(tX) + '" y="' + n(tY + vy) + '" text-anchor="' + ta + '" font-size="' + fs + '" fill="' + fc + '"' + rot + '>' + esc(an.text) + '</text>';
+  });
+  o += '<g class="labels">' + anns + '</g>';
+
+  const gt = t => t == null ? '' : (t.text != null ? t.text : t);
+  const xt = gt(lay.xaxis && lay.xaxis.title), yt = gt(lay.yaxis && lay.yaxis.title);
+  if (xt) o += '<text x="' + n(xOff + xL / 2) + '" y="' + n(H - 6) + '" text-anchor="middle" font-size="' + (fnt + 1) + '" fill="#1a1d23">' + esc(xt) + '</text>';
+  if (yt) o += '<text transform="translate(14 ' + n(yOff + yL / 2) + ') rotate(-90)" text-anchor="middle" font-size="' + (fnt + 1) + '" fill="#1a1d23">' + esc(yt) + '</text>';
+  return o + '</svg>';
+}
+function saveSVG(gd, name) {
+  const svg = plotlyToSVG(gd);
+  if (!svg) { alert('Plot something first.'); return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+  a.download = name + '.svg'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+}
+async function savePDF(gd, name) {
+  const svg = plotlyToSVG(gd);
+  if (!svg) { alert('Plot something first.'); return; }
+  if (!window.jspdf || !window.jspdf.jsPDF) { alert('PDF library did not load \u2014 check your connection, or use the SVG button.'); return; }
+  const { jsPDF } = window.jspdf;
+  const el = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement;
+  const W = +el.getAttribute('width'), H = +el.getAttribute('height');
+  try {
+    const holder = document.createElement('div'); holder.style.cssText = 'position:fixed;left:-99999px;top:0;'; holder.appendChild(el); document.body.appendChild(holder);
+    const pdf = new jsPDF({ orientation: W >= H ? 'landscape' : 'portrait', unit: 'pt', format: [W, H] });
+    if (typeof pdf.svg === 'function') await pdf.svg(el, { x: 0, y: 0, width: W, height: H });
+    else if (typeof window.svg2pdf === 'function') await window.svg2pdf(el, pdf, { x: 0, y: 0, width: W, height: H });
+    else throw new Error('svg2pdf unavailable');
+    pdf.save(name + '.pdf'); document.body.removeChild(holder);
+  } catch (e) {
+    try { const png = await Plotly.toImage(gd, { format: 'png', scale: 4 }); const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: [W, H] }); pdf.addImage(png, 'PNG', 0, 0, W, H); pdf.save(name + '.pdf'); alert('Saved a raster PDF (the vector step failed) \u2014 use the SVG button for fully editable output.'); }
+    catch (e2) { alert('PDF export failed: ' + e2.message + '. Use the SVG button instead.'); }
+  }
+}
+
+/* ── Volcano plot tool (isolated scope) ───────────────────────────────── */
+(function () {
+  const $ = id => document.getElementById(id);
+  const plotEl = $('vpPlot');
+  let rows = null, headers = [], manualLabel = {}, dragHooked = false, progDrag = false, geneColor = {};
+
+  // one colour picker per gene of interest; un-set genes follow the base "Genes of interest" colour
+  function buildGeneColorUI() {
+    const box = $('vpGeneColors'); if (!box) return;
+    box.innerHTML = '';
+    const base = $('vpColHit').value, seen = [];
+    $('vpGenes').value.split(',').forEach(tok => {
+      tok = tok.trim(); if (!tok) return;
+      const eq = tok.indexOf('='), sym = (eq >= 0 ? tok.slice(0, eq) : tok).trim();
+      const lab = (eq >= 0 ? tok.slice(eq + 1) : tok).trim();
+      if (!sym) return;
+      const key = sym.toUpperCase(); if (seen.includes(key)) return; seen.push(key);
+      const row = document.createElement('div'); row.className = 'vp-color-row';
+      const name = document.createElement('span'); name.textContent = lab || sym;
+      name.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      const inp = document.createElement('input'); inp.type = 'color'; inp.value = geneColor[key] || base;
+      inp.addEventListener('input', () => { geneColor[key] = inp.value; updateResetGeneBtn(); render(); });
+      row.append(name, inp); box.appendChild(row);
+    });
+    Object.keys(geneColor).forEach(k => { if (!seen.includes(k)) delete geneColor[k]; });   // drop stale overrides
+    updateResetGeneBtn();
+  }
+  function updateResetGeneBtn() { const b = $('vpResetGeneCols'); if (b) b.style.display = Object.keys(geneColor).length ? '' : 'none'; }
+
+  const drop = $('vpDrop'), fileInput = $('vpFile');
+  drop.addEventListener('dragover',  e => { e.preventDefault(); drop.classList.add('drag-over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
+  drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('drag-over'); if (e.dataTransfer.files[0]) load(e.dataTransfer.files[0]); });
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) load(fileInput.files[0]); });
+
+  function err(msg) { const e = $('vpError'); if (!msg) { e.classList.remove('visible'); return; } e.innerHTML = msg; e.classList.add('visible'); }
+
+  function load(file) {
+    $('vpFilename').textContent = file.name;
+    $('vpFilename').style.display = 'block';
+    err('');
+    Papa.parse(file, {
+      header: true, skipEmptyLines: true,
+      complete: res => {
+        rows = res.data;
+        headers = (res.meta.fields || []).filter(h => h != null && String(h).trim() !== '');
+        if (!headers.length) { err('No columns found in this CSV.'); return; }
+        manualLabel = {}; $('vpResetLabels').style.display = 'none';
+        setupColumns();
+        if (!$('vpTitle').value) $('vpTitle').value = file.name.replace(/\.[^.]+$/, '');
+        render();
+      },
+      error: e => err('CSV parse error: ' + e.message)
+    });
+  }
+
+  function pick(patterns, fallbackIdx) {
+    for (const p of patterns) { const m = headers.find(h => p.test(h)); if (m) return m; }
+    return headers[fallbackIdx] || headers[0];
+  }
+
+  function setupColumns() {
+    const choices = [
+      ['vpGeneCol', pick([/gene/i, /name/i, /symbol/i, /^id$/i, /orf/i], 0)],
+      ['vpXCol',    pick([/log2|logfc|log\.?fc|lfc/i, /fold/i], 1)],
+      ['vpYCol',    pick([/p[\s._-]?val/i, /pvalue/i, /p\.value/i, /padj|fdr|adj/i, /^p$/i], 2)]
+    ];
+    choices.forEach(([id, sel]) => {
+      const s = $(id); s.innerHTML = '';
+      headers.forEach(h => {
+        const o = document.createElement('option');
+        o.value = h; o.textContent = h; if (h === sel) o.selected = true;
+        s.appendChild(o);
+      });
+    });
+    $('vpMapSection').style.display = '';
+  }
+
+  function process() {
+    const gCol = $('vpGeneCol').value, xCol = $('vpXCol').value, yCol = $('vpYCol').value;
+    const fc = parseFloat($('vpFc').value) || 0, pcut = parseFloat($('vpP').value) || 0.05;
+
+    const hitMap = {};
+    $('vpGenes').value.split(',').forEach(tok => {
+      tok = tok.trim(); if (!tok) return;
+      const eq = tok.indexOf('=');
+      const sym = (eq >= 0 ? tok.slice(0, eq) : tok).trim();
+      const lab = (eq >= 0 ? tok.slice(eq + 1) : tok).trim();
+      if (sym) hitMap[sym.toUpperCase()] = lab || sym;
+    });
+
+    const blank = () => ({ x: [], y: [], g: [], p: [] });
+    const cats = { up: blank(), down: blank(), ns: blank() };
+    const hits = { x: [], y: [], g: [], p: [], lab: [], key: [] };
+    let maxAbs = 0;
+
+    const xfm = $('vpXfm').value, yfm = $('vpYfm').value;
+    let hasNeg = false, maxY = -Infinity, minY = Infinity;
+    for (const r of rows) {
+      const g = String(r[gCol] == null ? '' : r[gCol]).trim();
+      const rx = parseFloat(r[xCol]), ry = parseFloat(r[yCol]);
+      if (!isFinite(rx) || !isFinite(ry)) continue;
+      if (xfm === 'log2' && rx <= 0) continue;
+      if (yfm === 'neglog10' && ry <= 0) continue;
+      const x = xfm === 'log2' ? Math.log2(rx) : rx;
+      const y = yfm === 'neglog10' ? -Math.log10(ry) : ry;
+      // significance: x threshold in displayed units; the cutoff applies to the raw Y value (smaller = more significant)
+      const st = (ry < pcut && x >= fc) ? 'up' : (ry < pcut && x <= -fc) ? 'down' : 'ns';
+      const c = cats[st]; c.x.push(x); c.y.push(y); c.g.push(g); c.p.push(ry);
+      if (Math.abs(x) > maxAbs) maxAbs = Math.abs(x);
+      if (x < 0) hasNeg = true;
+      if (y > maxY) maxY = y; if (y < minY) minY = y;
+      const k = g.toUpperCase();
+      if (k in hitMap) { hits.x.push(x); hits.y.push(y); hits.g.push(g); hits.p.push(ry); hits.lab.push(hitMap[k]); hits.key.push(k); }
+    }
+    return { cats, hits, maxAbs, fc, pcut, yfm, hasNeg, maxY, minY };
+  }
+
+  const HOVER = '<b>%{text}</b><br>x: %{x:.3g}<br>raw y: %{customdata:.3g}<extra></extra>';
+
+  function buildNaiveLabels(hits, labSz, hitSz) {
+    const out = [];
+    hits.lab.forEach((lab, i) => out.push({
+      x: hits.x[i], y: hits.y[i], text: lab,
+      font: { size: labSz, color: '#1a1d23', family: "'IBM Plex Sans', sans-serif" },
+      showarrow: true, arrowhead: 0, arrowwidth: 1, arrowcolor: '#9aa0a6',
+      ax: 0, ay: -24 - hitSz * 0.6, axref: 'pixel', ayref: 'pixel', bgcolor: 'rgba(255,255,255,0)'
+    }));
+    return out;
+  }
+
+  // ggrepel-style label placement: iterative box repulsion in pixel space, connectors back to each marker
+  function computeRepelledLabels(hits, fl, labSz, hitSz) {
+    const xa = fl.xaxis, ya = fl.yaxis;
+    const X0 = xa.range[0], X1 = xa.range[1], Y0 = ya.range[0], Y1 = ya.range[1];
+    const xL = xa._length, yL = ya._length, xOff = xa._offset, yOff = ya._offset;
+    if (!(xL > 0) || !(yL > 0) || X1 === X0 || Y1 === Y0) return buildNaiveLabels(hits, labSz, hitSz);
+    const px = v => xOff + (v - X0) / (X1 - X0) * xL;
+    const py = v => yOff + (1 - (v - Y0) / (Y1 - Y0)) * yL;
+    const n = hits.lab.length;
+    const ancX = [], ancY = [], bw = [], bh = [], lx = [], ly = [];
+    for (let i = 0; i < n; i++) {
+      const axp = px(hits.x[i]), ayp = py(hits.y[i]);
+      ancX.push(axp); ancY.push(ayp);
+      bw.push(Math.max(16, hits.lab[i].length * labSz * 0.6) + 4);
+      bh.push(labSz * 1.3 + 2);
+      lx.push(axp + ((i * 37) % 13 - 6)); ly.push(ayp - (bh[i] / 2 + 9 + hitSz * 0.3) - ((i * 29) % 17));
+    }
+    const L = xOff, R = xOff + xL, T = yOff, B = yOff + yL, ITER = 700;
+    for (let it = 0; it < ITER; it++) {
+      const cool = 0.22 + 0.78 * (1 - it / ITER);
+      for (let i = 0; i < n; i++) {
+        let fx = 0, fy = 0;
+        for (let j = 0; j < n; j++) {                 // label-label box repulsion
+          if (j === i) continue;
+          const dx = lx[i] - lx[j], dy = ly[i] - ly[j];
+          const ox = (bw[i] + bw[j]) / 2 + 3 - Math.abs(dx);
+          const oy = (bh[i] + bh[j]) / 2 + 2 - Math.abs(dy);
+          if (ox > 0 && oy > 0) {
+            if (ox < oy) fx += (dx >= 0 ? 1 : -1) * ox * 0.7;
+            else fy += (dy >= 0 ? 1 : -1) * oy * 0.7;
+          }
+        }
+        for (let j = 0; j < n; j++) {                 // keep labels off the highlighted markers
+          const dx = lx[i] - ancX[j], dy = ly[i] - ancY[j];
+          const md = bh[i] / 2 + hitSz * 0.5 + 3, d2 = dx * dx + dy * dy;
+          if (d2 < md * md && d2 > 0.01) { const dd = Math.sqrt(d2); fx += dx / dd * (md - dd) * 0.5; fy += dy / dd * (md - dd) * 0.5; }
+        }
+        const tx = ancX[i], ty = ancY[i] - (bh[i] / 2 + 9 + hitSz * 0.3);   // spring toward just-above-marker
+        fx += (tx - lx[i]) * 0.02; fy += (ty - ly[i]) * 0.02;
+        lx[i] += fx * cool; ly[i] += fy * cool;
+        lx[i] = Math.min(R - bw[i] / 2, Math.max(L + bw[i] / 2, lx[i]));
+        ly[i] = Math.min(B - bh[i] / 2, Math.max(T + bh[i] / 2, ly[i]));
+      }
+    }
+    const out = [];
+    for (let i = 0; i < n; i++) out.push({
+      x: hits.x[i], y: hits.y[i], xref: 'x', yref: 'y',
+      ax: lx[i] - ancX[i], ay: ly[i] - ancY[i], axref: 'pixel', ayref: 'pixel',
+      text: hits.lab[i],
+      font: { size: labSz, color: '#1a1d23', family: "'IBM Plex Sans', sans-serif" },
+      showarrow: true, arrowhead: 0, arrowwidth: 1, arrowcolor: '#9aa0a6',
+      standoff: hitSz * 0.5 + 1, bgcolor: 'rgba(255,255,255,0.66)', borderpad: 1
+    });
+    return out;
+  }
+
+  // overlay any hand-dragged positions (keyed by label text) onto a freshly built annotation set
+  function applyManual(arr) {
+    return arr.map(a => {
+      const m = manualLabel[a.text];
+      return m ? Object.assign({}, a, { ax: m.ax, ay: m.ay, axref: m.axref, ayref: m.ayref }) : a;
+    });
+  }
+
+  // when a label is dragged in the plot, remember where the user put it
+  function onAnnoDrag(e) {
+    if (progDrag || !e) return;
+    let touched = false;
+    for (const k in e) {
+      const mm = /^annotations\[(\d+)\]\.(ax|ay)$/.exec(k);
+      if (!mm) continue;
+      const a = plotEl.layout && plotEl.layout.annotations && plotEl.layout.annotations[+mm[1]];
+      if (a && a.text != null) {
+        manualLabel[a.text] = { ax: a.ax, ay: a.ay, axref: a.axref || 'pixel', ayref: a.ayref || 'pixel' };
+        touched = true;
+      }
+    }
+    if (touched) $('vpResetLabels').style.display = '';
+  }
+
+  function render() {
+    if (!rows) return;
+    const d = process();
+
+    const sz = +$('vpSz').value, hitSz = +$('vpHitSz').value, op = +$('vpOp').value;
+    const colUp = $('vpColUp').value, colDown = $('vpColDown').value, colNs = $('vpColNs').value, colHit = $('vpColHit').value;
+    const outline = $('vpOutline').checked, ow = +$('vpOw').value, oc = $('vpOc').value;
+    const font = +$('vpFont').value, labSz = +$('vpLabSz').value;
+    const showThr = $('vpThline').checked, showLeg = $('vpLegend').checked, showLab = $('vpLabels').checked, sym = $('vpSym').checked;
+
+    const mk = (cat, name, color) => ({
+      type: 'scatter', mode: 'markers', name,
+      x: cat.x, y: cat.y, text: cat.g, customdata: cat.p,
+      marker: { color, size: sz, opacity: op, line: { width: 0 } },
+      hovertemplate: HOVER
+    });
+
+    const traces = [
+      mk(d.cats.ns, 'n.s.', colNs),
+      mk(d.cats.down, 'Down', colDown),
+      mk(d.cats.up, 'Up', colUp),
+      {
+        type: 'scatter', mode: 'markers', name: 'Genes of interest', showlegend: false,
+        x: d.hits.x, y: d.hits.y, text: d.hits.lab, customdata: d.hits.p,
+        marker: { color: d.hits.key.map(k => geneColor[k] || colHit), size: hitSz, opacity: 1, line: { width: outline ? ow : 0, color: oc } },
+        hovertemplate: HOVER
+      }
+    ];
+
+    const repelOn = $('vpRepel').checked;
+    const ann = (showLab && !repelOn) ? applyManual(buildNaiveLabels(d.hits, labSz, hitSz)) : [];
+
+    const shapes = [];
+    if (showThr) {
+      const ythr = d.yfm === 'neglog10' ? -Math.log10(d.pcut) : d.pcut;
+      shapes.push({ type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: ythr, y1: ythr, line: { color: '#9aa0a6', width: 1, dash: 'dash' } });
+      if (d.fc > 0) shapes.push({ type: 'line', yref: 'paper', y0: 0, y1: 1, xref: 'x', x0: d.fc, x1: d.fc, line: { color: '#9aa0a6', width: 1, dash: 'dash' } });
+      if (d.fc > 0 && d.hasNeg) shapes.push({ type: 'line', yref: 'paper', y0: 0, y1: 1, xref: 'x', x0: -d.fc, x1: -d.fc, line: { color: '#9aa0a6', width: 1, dash: 'dash' } });
+    }
+
+    const m = d.maxAbs > 0 ? d.maxAbs * 1.05 : 1;
+    const titleText = $('vpTitle').value.trim();
+
+    let vyRange;
+    if (showLab && d.hits.lab.length && isFinite(d.maxY)) {
+      const yb = (isFinite(d.minY) && d.minY < 0) ? d.minY * 1.05 : 0;
+      vyRange = [yb, d.maxY + (d.maxY - yb) * 0.18];
+    }
+
+    const layout = {
+      title: { text: titleText, font: { size: font + 3, color: '#1a1d23', family: "'IBM Plex Sans', sans-serif" }, x: 0.5, xanchor: 'center', automargin: true },
+      font: { family: "'IBM Plex Sans', system-ui, sans-serif", size: font, color: '#1a1d23' },
+      xaxis: { title: { text: $('vpXLab').value, font: { size: font }, standoff: 10 }, range: sym ? [-m, m] : undefined,
+               zeroline: false, gridcolor: '#eef1f4', linecolor: '#cbd2d9', linewidth: 1, mirror: true,
+               ticks: 'outside', tickcolor: '#cbd2d9', ticklen: 4, automargin: true },
+      yaxis: { title: { text: $('vpYLab').value, font: { size: font }, standoff: 10 }, rangemode: 'tozero', range: vyRange,
+               zeroline: false, gridcolor: '#eef1f4', linecolor: '#cbd2d9', linewidth: 1, mirror: true,
+               ticks: 'outside', tickcolor: '#cbd2d9', ticklen: 4, automargin: true },
+      paper_bgcolor: '#ffffff', plot_bgcolor: '#ffffff',
+      showlegend: showLeg,
+      legend: { orientation: 'h', x: 0.5, xanchor: 'center', y: 1.0, yanchor: 'bottom', font: { size: font }, bgcolor: 'rgba(0,0,0,0)' },
+      shapes, annotations: ann,
+      margin: { l: 64, r: 22, t: (titleText ? 46 : 22) + (showLeg ? 26 : 0), b: 54 },
+      hovermode: 'closest',
+      hoverlabel: { bgcolor: '#fff', bordercolor: '#e2e4e9', font: { family: "'IBM Plex Mono', monospace", size: 11, color: '#1a1d23' } }
+    };
+
+    const config = {
+      responsive: true, displaylogo: false,
+      edits: { annotationTail: true, annotationPosition: false, annotationText: false },
+      modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+      toImageButtonOptions: { format: 'png', filename: 'volcano_plot', scale: 3 }
+    };
+
+    $('vpEmpty').style.display = 'none';
+    plotEl.style.display = '';
+    const drawn = Plotly.react(plotEl, traces, layout, config);
+    drawn.then(() => {
+      if (!dragHooked && plotEl.on) { plotEl.on('plotly_relayout', onAnnoDrag); dragHooked = true; }
+      if (showLab && repelOn && d.hits.lab.length) {
+        const fl = plotEl._fullLayout;
+        if (fl && fl.xaxis && fl.yaxis) {
+          progDrag = true;
+          Plotly.relayout(plotEl, { annotations: applyManual(computeRepelledLabels(d.hits, fl, labSz, hitSz)) })
+            .then(() => { progDrag = false; }, () => { progDrag = false; });
+        }
+      }
+    });
+
+    const sumEl = $('vpSummary');
+    if ($('vpExplain').checked) {
+      const nUp = d.cats.up.x.length, nDown = d.cats.down.x.length, nNs = d.cats.ns.x.length, tot = nUp + nDown + nNs;
+      sumEl.innerHTML =
+        'Each point is a gene. <b>x</b> is the log\u2082 fold change between the two conditions; <b>y</b> is \u2212log\u2081\u2080 of the p-value from the differential test that produced your data (commonly a moderated t-test, e.g. limma / DESeq2 / edgeR). Points beyond the dashed cut-offs &mdash; |log\u2082FC| \u2265 ' + d.fc + ' and p &lt; ' + d.pcut + ' &mdash; are called up or down; the larger blue points are your genes of interest. ' +
+        '<br><br>At these thresholds: <b>' + nUp + '</b> up, <b>' + nDown + '</b> down, <b>' + nNs + '</b> not significant (' + tot + ' plotted). Lowering the p cut-off or raising the fold-change cut-off makes the call stricter.';
+      sumEl.style.display = '';
+    } else {
+      sumEl.style.display = 'none';
+    }
+  }
+
+  // throttle live updates to one render per frame
+  let raf = null;
+  const schedule = () => { if (raf) return; raf = requestAnimationFrame(() => { raf = null; render(); }); };
+
+  // sliders: live value readout + render
+  [['vpFc','vpFcVal',1],['vpSz','vpSzVal',1],['vpHitSz','vpHitSzVal',1],['vpOp','vpOpVal',2],
+   ['vpOw','vpOwVal',1],['vpFont','vpFontVal',0],['vpLabSz','vpLabSzVal',0]].forEach(([id, valId, dec]) => {
+    const s = $(id), v = $(valId);
+    const upd = () => { v.textContent = parseFloat(s.value).toFixed(dec); };
+    upd();
+    s.addEventListener('input', () => { upd(); schedule(); });
+  });
+
+  // text / number / colour inputs -> render
+  ['vpP','vpColUp','vpColDown','vpColNs','vpOc','vpTitle','vpXLab','vpYLab']
+    .forEach(id => $(id).addEventListener('input', schedule));
+  $('vpGenes').addEventListener('input', () => { buildGeneColorUI(); schedule(); });
+  $('vpColHit').addEventListener('input', () => { buildGeneColorUI(); schedule(); });
+  $('vpResetGeneCols').addEventListener('click', () => { geneColor = {}; buildGeneColorUI(); render(); });
+  buildGeneColorUI();
+  // selects / checkboxes -> render
+  ['vpGeneCol','vpXCol','vpYCol','vpOutline','vpSym','vpThline','vpLegend','vpLabels','vpExplain','vpXfm','vpYfm','vpRepel']
+    .forEach(id => $(id).addEventListener('change', schedule));
+  $('vpResetLabels').addEventListener('click', () => { manualLabel = {}; $('vpResetLabels').style.display = 'none'; render(); });
+
+  // export
+  $('vpPng').addEventListener('click', () => { if (rows) Plotly.downloadImage(plotEl, { format: 'png', width: 1200, height: 900, scale: 3, filename: 'volcano_plot' }); });
+  $('vpSvg').addEventListener('click', () => { if (rows) saveSVG(plotEl, 'volcano_plot'); });
+
+  async function downloadPDF() {
+    if (!rows) return;
+    if (!window.jspdf || !window.jspdf.jsPDF) { err('PDF library did not load \u2014 check your internet connection, or use SVG.'); return; }
+    const { jsPDF } = window.jspdf;
+    const w = 1200, h = 900;
+    err('');
+    try {
+      // vector route: Plotly SVG -> svg2pdf
+      const uri = await Plotly.toImage(plotEl, { format: 'svg', width: w, height: h });
+      const comma = uri.indexOf(',');
+      const meta = uri.slice(0, comma), data = uri.slice(comma + 1);
+      const svgText = meta.includes('base64') ? atob(data) : decodeURIComponent(data);
+      const parsed = new DOMParser().parseFromString(svgText, 'image/svg+xml').documentElement;
+      const svgEl = document.importNode(parsed, true);
+      svgEl.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      svgEl.setAttribute('width', w); svgEl.setAttribute('height', h);
+      if (!svgEl.getAttribute('viewBox')) svgEl.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+      const holder = document.createElement('div');
+      holder.style.cssText = 'position:fixed;left:-99999px;top:0;';
+      holder.appendChild(svgEl);
+      document.body.appendChild(holder);
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: [w, h] });
+      if (typeof pdf.svg === 'function')      await pdf.svg(svgEl, { x: 0, y: 0, width: w, height: h });
+      else if (typeof window.svg2pdf === 'function') await window.svg2pdf(svgEl, pdf, { x: 0, y: 0, width: w, height: h });
+      else throw new Error('svg2pdf unavailable');
+      pdf.save('volcano_plot.pdf');
+      document.body.removeChild(holder);
+    } catch (e) {
+      // vector route failed -> high-res raster PDF, but tell the user (raster isn't editable per-element in Illustrator)
+      try {
+        const png = await Plotly.toImage(plotEl, { format: 'png', width: w, height: h, scale: 4 });
+        const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: [w, h] });
+        pdf.addImage(png, 'PNG', 0, 0, w, h);
+        pdf.save('volcano_plot.pdf');
+        err('Couldn\u2019t build a vector PDF in this browser, so a high-resolution raster PDF was saved instead. For a fully editable, lossless figure, use the SVG button.');
+      } catch (e2) { err('PDF export failed: ' + e2.message + '. Use the SVG button instead.'); }
+    }
+  }
+  $('vpPdf').addEventListener('click', () => { if (rows) savePDF(plotEl, 'volcano_plot'); });
+
+  // re-fit the plot when the volcano tab is shown
+  window.__vpResize = () => { if (rows && plotEl.style.display !== 'none') render(); };
+  window.addEventListener('resize', () => { clearTimeout(window.__vpRT); window.__vpRT = setTimeout(() => { if (rows && plotEl.offsetParent !== null) render(); }, 200); });
+})();
+
+/* ── qPCR / Dual Luciferase tool (isolated scope) ─────────────────────── */
+(function () {
+  const $ = id => document.getElementById(id);
+  const plotEl = $('qpPlot');
+  let data = null, rawRows = null;
+  const colorMap = {}, renameMap = {};
+  const PALETTE = ['#2e78b5','#d1495b','#7a9e3f','#e09f3e','#5d54a4','#1b998b','#c0508f','#8d6e63'];
+
+  const drop = $('qpDrop'), fileInput = $('qpFile');
+  drop.addEventListener('dragover',  e => { e.preventDefault(); drop.classList.add('drag-over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
+  drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('drag-over'); if (e.dataTransfer.files[0]) load(e.dataTransfer.files[0]); });
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) load(fileInput.files[0]); });
+
+  function err(msg) { const e = $('qpError'); if (!msg) { e.classList.remove('visible'); return; } e.innerHTML = msg; e.classList.add('visible'); }
+  function uniq(a) { const s = new Set(), o = []; a.forEach(x => { if (!s.has(x)) { s.add(x); o.push(x); } }); return o; }
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function plural(d) { return d === 'strain' ? 'strains' : d === 'gene' ? 'genes' : 'treatments'; }
+
+  function load(file) {
+    $('qpFilename').textContent = file.name; $('qpFilename').style.display = 'block'; err('');
+    Papa.parse(file, {
+      header: false, skipEmptyLines: true,
+      complete: res => {
+        rawRows = res.data;
+        try { data = parseQpcr(rawRows, $('qpSwap').checked); }
+        catch (e2) { err('Could not read this file: ' + e2.message); return; }
+        if (!data.records.length) { err('No data rows found.'); return; }
+        buildFilters(); buildColorUI(); buildRenameUI(); updateSigHelp();
+        if (!$('qpTitle').value) $('qpTitle').value = file.name.replace(/\.[^.]+$/, '');
+        $('qpSetupSection').style.display = ''; $('qpFilterSection').style.display = ''; $('qpColorSection').style.display = ''; $('qpRenameSection').style.display = '';
+        render();
+      },
+      error: e2 => err('CSV parse error: ' + e2.message)
+    });
+  }
+
+  function parseQpcr(rows, swap) {
+    if (!rows || rows.length < 2) throw new Error('need a header row plus data rows');
+    const header = rows[0];
+    const ncol = Math.max.apply(null, rows.map(r => r.length));
+    const dataRows = rows.slice(1).filter(r => r.length && String(r[0] == null ? '' : r[0]).trim() !== '');
+    if (!dataRows.length) throw new Error('no data rows found');
+    // Value region = the contiguous block of numeric columns at the right; label columns are everything to its left.
+    // Scanning from the right is robust to numeric identifiers (e.g. a strain literally named "123"), because the
+    // gene column (text) breaks the numeric run and is correctly kept as a label column.
+    const numFrac = c => { let num = 0, tot = 0; dataRows.forEach(r => { const v = r[c]; if (v != null && String(v).trim() !== '') { tot++; if (isFinite(parseFloat(v))) num++; } }); return tot ? num / tot : 0; };
+    let firstVal = ncol;
+    for (let c = ncol - 1; c >= 0; c--) { if (numFrac(c) >= 0.6) firstVal = c; else break; }
+    let labelCols = firstVal < 1 ? 1 : firstVal;
+    if (labelCols >= ncol) throw new Error('no numeric value columns detected');
+    const valCols = []; for (let c = labelCols; c < ncol; c++) valCols.push(c);
+    // Treatment names come from the header cells over the value columns, centred over equal replicate blocks.
+    const tp = [];
+    valCols.forEach(c => { const h = header[c]; if (h != null && String(h).trim() !== '') tp.push({ name: String(h).trim(), col: c }); });
+    tp.sort((a, b) => a.col - b.col);
+    const colTreat = {};
+    if (tp.length >= 1 && valCols.length % tp.length === 0) {
+      const reps = valCols.length / tp.length;
+      valCols.forEach((c, i) => { colTreat[c] = tp[Math.floor(i / reps)].name; });
+    } else if (tp.length >= 1) {
+      valCols.forEach(c => { let best = tp[0], bd = Infinity; tp.forEach(t => { const d = Math.abs(t.col - c); if (d < bd) { bd = d; best = t; } }); colTreat[c] = best.name; });
+    } else { valCols.forEach(c => { colTreat[c] = 'Value'; }); }
+    const records = [];
+    dataRows.forEach(r => {
+      const labs = r.slice(0, labelCols).map(x => String(x == null ? '' : x).trim());
+      let strain, gene;
+      if (labelCols >= 2) { strain = labs[0]; gene = labs[1]; }          // separate Strain / Gene columns
+      else { const s = labs[0], sp = s.indexOf(' '); strain = sp >= 0 ? s.slice(0, sp).trim() : s; gene = sp >= 0 ? s.slice(sp + 1).trim() : s; }  // combined "Strain Gene"
+      if (swap) { const t = strain; strain = gene; gene = t; }
+      if (!strain && !gene) return;
+      const byT = {};
+      valCols.forEach(c => { const t = colTreat[c]; const v = parseFloat(r[c]); if (!byT[t]) byT[t] = []; if (isFinite(v)) byT[t].push(v); });
+      Object.keys(byT).forEach(t => { if (byT[t].length) records.push({ strain, gene, treatment: t, values: byT[t] }); });
+    });
+    if (!records.length) throw new Error('no usable records found — check the column layout');
+    return { records, strains: uniq(records.map(r => r.strain)), genes: uniq(records.map(r => r.gene)), treatments: uniq(records.map(r => r.treatment)) };
+  }
+
+  function buildFilters() {
+    [['qpFilterStrain', data.strains], ['qpFilterGene', data.genes], ['qpFilterTreatment', data.treatments]].forEach(([id, vals]) => {
+      const box = $(id); box.innerHTML = '';
+      vals.forEach(v => {
+        const lab = document.createElement('label');
+        const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true; cb.value = v;
+        cb.addEventListener('change', render);
+        const sp = document.createElement('span'); sp.textContent = v;
+        lab.append(cb, sp); box.appendChild(lab);
+      });
+    });
+  }
+  function included(id) { const set = new Set(); $(id).querySelectorAll('input[type=checkbox]').forEach(cb => { if (cb.checked) set.add(cb.value); }); return set; }
+  function filterId(d) { return d === 'strain' ? 'qpFilterStrain' : d === 'gene' ? 'qpFilterGene' : 'qpFilterTreatment'; }
+
+  function ensureColors(sDim) { data[plural(sDim)].forEach((v, i) => { if (!(v in colorMap)) colorMap[v] = PALETTE[i % PALETTE.length]; }); }
+  function colorDimOf() { return $('qpNested').checked ? $('qpXDim').value : $('qpGroupDim').value; }
+  function buildColorUI() {
+    const sDim = colorDimOf(); ensureColors(sDim);
+    const box = $('qpColors'); box.innerHTML = '';
+    data[plural(sDim)].forEach(v => {
+      const row = document.createElement('div'); row.className = 'vp-color-row';
+      const name = document.createElement('span'); name.textContent = v; name.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      const inp = document.createElement('input'); inp.type = 'color'; inp.value = colorMap[v];
+      inp.addEventListener('input', () => { colorMap[v] = inp.value; render(); });
+      row.append(name, inp); box.appendChild(row);
+    });
+  }
+  // GraphPad-style p-value text
+  function pfmt(p) {
+    if (!(p >= 0)) return '';
+    if (p < 0.0001) return 'p<0.0001';
+    if (p >= 0.1) return 'p=' + p.toFixed(2);
+    if (p >= 0.01) return 'p=' + p.toFixed(3);
+    return 'p=' + p.toFixed(4);
+  }
+
+  function tVal(df) { const t = { 1:12.706,2:4.303,3:3.182,4:2.776,5:2.571,6:2.447,7:2.365,8:2.306,9:2.262,10:2.228 }; return t[df] || 1.96; }
+  function stat(vals, type) {
+    const n = vals.length, mean = vals.reduce((a, b) => a + b, 0) / n;
+    if (n < 2 || type === 'none') return { mean, err: 0 };
+    const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (n - 1));
+    const sem = sd / Math.sqrt(n);
+    let e = sd; if (type === 'sem') e = sem; else if (type === 'ci95') e = sem * tVal(n - 1);
+    return { mean, err: e };
+  }
+
+  // significance testing ----------------------------------------------------
+  function avg(v) { return v.reduce((a, b) => a + b, 0) / v.length; }
+  function vari(v) { const m = avg(v); return v.reduce((a, b) => a + (b - m) * (b - m), 0) / (v.length - 1); }
+  function gammaln(x) {
+    const c = [76.18009172947146, -86.50532032941677, 24.01409824083091, -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5];
+    let y = x, tmp = x + 5.5; tmp -= (x + 0.5) * Math.log(tmp); let ser = 1.000000000190015;
+    for (let j = 0; j < 6; j++) { y++; ser += c[j] / y; }
+    return -tmp + Math.log(2.5066282746310005 * ser / x);
+  }
+  function betacf(a, b, x) {
+    const MAXIT = 200, EPS = 3e-12, FPMIN = 1e-300;
+    let qab = a + b, qap = a + 1, qam = a - 1, c = 1, d = 1 - qab * x / qap;
+    if (Math.abs(d) < FPMIN) d = FPMIN; d = 1 / d; let h = d;
+    for (let m = 1; m <= MAXIT; m++) {
+      const m2 = 2 * m;
+      let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+      d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN; c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN; d = 1 / d; h *= d * c;
+      aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+      d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN; c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN; d = 1 / d; const del = d * c; h *= del;
+      if (Math.abs(del - 1) < EPS) break;
+    }
+    return h;
+  }
+  function betai(a, b, x) {
+    if (x <= 0) return 0; if (x >= 1) return 1;
+    const bt = Math.exp(gammaln(a + b) - gammaln(a) - gammaln(b) + a * Math.log(x) + b * Math.log(1 - x));
+    return x < (a + 1) / (a + b + 2) ? bt * betacf(a, b, x) / a : 1 - bt * betacf(b, a, 1 - x) / b;
+  }
+  function ttestP(a, b) {
+    const n1 = a.length, n2 = b.length; if (n1 < 2 || n2 < 2) return NaN;
+    const v1 = vari(a), v2 = vari(b), se = Math.sqrt(v1 / n1 + v2 / n2);
+    if (se === 0) return avg(a) === avg(b) ? 1 : 0;
+    const t = (avg(a) - avg(b)) / se;
+    const df = Math.pow(v1 / n1 + v2 / n2, 2) / (Math.pow(v1 / n1, 2) / (n1 - 1) + Math.pow(v2 / n2, 2) / (n2 - 1));
+    return betai(df / 2, 0.5, df / (df + t * t));
+  }
+  function anovaP(groups) {
+    const k = groups.length; let N = 0, grand = 0;
+    groups.forEach(g => { N += g.length; g.forEach(v => grand += v); }); grand /= N;
+    let ssb = 0, ssw = 0;
+    groups.forEach(g => { const m = avg(g); ssb += g.length * (m - grand) * (m - grand); g.forEach(v => ssw += (v - m) * (v - m)); });
+    const df1 = k - 1, df2 = N - k;
+    if (df2 <= 0 || ssw === 0) return NaN;
+    const F = (ssb / df1) / (ssw / df2);
+    return betai(df2 / 2, df1 / 2, df2 / (df2 + df1 * F));
+  }
+  function stars(p) { if (!(p >= 0)) return 'ns'; if (p < 0.0001) return '****'; if (p < 0.001) return '***'; if (p < 0.01) return '**'; if (p < 0.05) return '*'; return 'ns'; }
+
+  // display-name (rename) helpers ------------------------------------------
+  function disp(dim, val) { const k = dim + '\u0001' + val; return renameMap[k] != null ? renameMap[k] : val; }
+  function buildRenameUI() {
+    [['qpRenameStrain', data.strains, 'strain'], ['qpRenameGene', data.genes, 'gene'], ['qpRenameTreatment', data.treatments, 'treatment']].forEach(([id, vals, dim]) => {
+      const box = $(id); if (!box) return; box.innerHTML = '';
+      vals.forEach(v => {
+        const inp = document.createElement('input'); inp.type = 'text'; inp.className = 'qp-rename-input';
+        inp.value = disp(dim, v); inp.title = 'Original: ' + v;
+        inp.addEventListener('input', () => {
+          const k = dim + '\u0001' + v;
+          if (inp.value.trim() === '' || inp.value === v) delete renameMap[k]; else renameMap[k] = inp.value;
+          schedule();
+        });
+        box.appendChild(inp);
+      });
+    });
+  }
+  function updateSigHelp() {
+    const t = $('qpSigTest').value; let msg;
+    if (t === 'ttest') msg = 'Welch\u2019s unpaired two-sample t-test (unequal variance) between the two bars in each cluster. ';
+    else if (t === 'anova') msg = 'One-way ANOVA testing for any overall difference among the bars in each cluster. ';
+    else msg = 'Auto: Welch\u2019s t-test when a cluster has two bars, one-way ANOVA when it has three or more. ';
+    msg += 'Significance is computed between the grouped (coloured) bars within each x-cluster. Stars: <b>*</b> p&lt;0.05, <b>**</b> p&lt;0.01, <b>***</b> p&lt;0.001, <b>****</b> p&lt;0.0001; <b>ns</b> = not significant. With only ~3 replicates these are indicative, not definitive.';
+    $('qpSigHelp').innerHTML = msg;
+  }
+
+  function fixDims(changed) {
+    let x = $('qpXDim').value, g = $('qpGroupDim').value;
+    if (x === g) {
+      if (changed === 'x') { g = ['treatment', 'strain', 'gene'].find(d => d !== x); $('qpGroupDim').value = g; }
+      else { x = ['gene', 'strain', 'treatment'].find(d => d !== g); $('qpXDim').value = x; }
+    }
+  }
+
+  function render() {
+    if (!data) return;
+    let xDim = $('qpXDim').value, sDim = $('qpGroupDim').value;
+    if (xDim === sDim) sDim = ['gene', 'strain', 'treatment'].find(d => d !== xDim);
+    const thirdDim = ['strain', 'gene', 'treatment'].find(d => d !== xDim && d !== sDim);
+    const nested = $('qpNested').checked;
+    const cDim = nested ? xDim : sDim;
+    ensureColors(cDim);
+
+    const errType = $('qpErr').value, showPts = $('qpPts').checked, logScale = $('qpLog').checked;
+    const barOp = +$('qpBarOp').value, clusterFrac = +$('qpClust').value, barLw = +$('qpBarLw').value, barLc = $('qpBarLc').value;
+    const errCap = +$('qpErrCap').value, errThick = +$('qpErrThick').value, errColor = $('qpErrColor').value;
+    const ptSz = +$('qpPtSz').value, ptJit = +$('qpPtJit').value, ptOp = +$('qpPtOp').value, ptColorMode = $('qpPtColor').value;
+    const font = +$('qpFont').value, tick = +$('qpTick').value, tickAng = +$('qpTickAng').value;
+    const showLeg = $('qpLegend').checked, showGrid = $('qpGrid').checked, sig = $('qpSig').checked, sigLabel = $('qpSigLabel').value;
+
+    const incS = included('qpFilterStrain'), incG = included('qpFilterGene'), incT = included('qpFilterTreatment');
+    const valsOf = { strain: data.strains.filter(v => incS.has(v)), gene: data.genes.filter(v => incG.has(v)), treatment: data.treatments.filter(v => incT.has(v)) };
+    const recMap = {};
+    data.records.forEach(r => { if (incS.has(r.strain) && incG.has(r.gene) && incT.has(r.treatment)) recMap[r.strain + '\u0000' + r.gene + '\u0000' + r.treatment] = r; });
+
+    const xVals = valsOf[xDim], tVals = valsOf[thirdDim], sVals = valsOf[sDim];
+    const cats = [];
+    xVals.forEach(xv => tVals.forEach(tv => cats.push({ xVal: xv, tVal: tv, label: tVals.length > 1 ? (disp(xDim, xv) + '  ' + disp(thirdDim, tv)) : disp(xDim, xv) })));
+    const C = cats.length, S = sVals.length || 1, bw = clusterFrac / S;
+    const bxOf = (ci, s) => ci + (s - (S - 1) / 2) * bw;
+    function recOf(c, sv) { const a = {}; a[xDim] = c.xVal; a[thirdDim] = c.tVal; a[sDim] = sv; return recMap[a.strain + '\u0000' + a.gene + '\u0000' + a.treatment]; }
+
+    const cell = cats.map(() => new Array(S).fill(null));
+    cats.forEach((c, ci) => sVals.forEach((sv, s) => {
+      const rec = recOf(c, sv); if (!rec) return;
+      const st = stat(rec.values, errType);
+      cell[ci][s] = { mean: st.mean, err: st.err, values: rec.values };
+    }));
+
+    const traces = [];
+    // bars grouped by the colour dimension (X-axis group when nested, otherwise the series)
+    const groupKeys = nested ? xVals : sVals;
+    groupKeys.forEach(gv => {
+      const xs = [], ys = [], eUp = [], eLo = [], txt = [];
+      cats.forEach((c, ci) => sVals.forEach((sv, s) => {
+        if (nested ? c.xVal !== gv : sVals[s] !== gv) return;
+        const cs = cell[ci][s], bx = bxOf(ci, s);
+        xs.push(bx); ys.push(cs ? cs.mean : null);
+        const e = cs ? cs.err : 0, m = cs ? cs.mean : 0;
+        eUp.push(e); eLo.push(Math.min(e, logScale ? m * 0.999 : m));
+        txt.push((nested ? disp(xDim, c.xVal) : c.label) + ' \u00b7 ' + disp(sDim, sv));
+      }));
+      traces.push({
+        type: 'bar', name: nested ? disp(xDim, gv) : disp(sDim, gv), x: xs, y: ys, width: bw * 0.9, textposition: 'none',
+        marker: { color: colorMap[gv] || '#888', opacity: barOp, line: { width: barLw, color: barLc } },
+        error_y: errType === 'none' ? { visible: false } : { type: 'data', symmetric: false, array: eUp, arrayminus: eLo, thickness: errThick, width: errCap, color: errColor },
+        text: txt, hovertemplate: '%{text}<br>mean %{y:.3g}<extra></extra>'
+      });
+    });
+
+    if (showPts) groupKeys.forEach(gv => {
+      const px = [], py = [], pt = [];
+      cats.forEach((c, ci) => sVals.forEach((sv, s) => {
+        if (nested ? c.xVal !== gv : sVals[s] !== gv) return;
+        const cs = cell[ci][s]; if (!cs) return;
+        const bx = bxOf(ci, s), nn = cs.values.length;
+        cs.values.forEach((v, k) => { const off = nn > 1 ? ((k / (nn - 1)) - 0.5) * bw * 0.55 * ptJit : 0; px.push(bx + off); py.push(v); pt.push((nested ? disp(xDim, c.xVal) : c.label) + ' \u00b7 ' + disp(sDim, sv)); });
+      }));
+      const baseCol = ptColorMode === 'match' ? (colorMap[gv] || '#888') : '#1a1d23';
+      const mk = ptColorMode === 'open'
+        ? { symbol: 'circle-open', color: '#1a1d23', size: ptSz, opacity: ptOp, line: { width: 1.4 } }
+        : { symbol: 'circle', color: baseCol, size: ptSz, opacity: ptOp, line: { width: 0.6, color: '#ffffff' } };
+      traces.push({ type: 'scatter', mode: 'markers', showlegend: false, x: px, y: py, text: pt, marker: mk, hovertemplate: '%{text}<br>rep %{y:.3g}<extra></extra>' });
+    });
+
+    let dMinPos = Infinity, globalTop = 0;
+    cell.forEach(row => row.forEach(cs => { if (cs) { if (cs.mean > 0) dMinPos = Math.min(dMinPos, cs.mean); globalTop = Math.max(globalTop, cs.mean + cs.err); } }));
+    if (!(globalTop > 0)) globalTop = 1;
+
+    const shapes = [], anns = [];
+    if (sig && errType !== 'none') {
+      const sigSel = $('qpSigTest').value;
+      cats.forEach((c, ci) => {
+        const groups = []; for (let s = 0; s < S; s++) { const cs = cell[ci][s]; if (cs && cs.values.length >= 2) groups.push(cs.values); }
+        if (groups.length < 2) return;
+        let use = sigSel; if (use === 'auto') use = groups.length === 2 ? 'ttest' : 'anova';
+        const p = (use === 'ttest' && groups.length === 2) ? ttestP(groups[0], groups[1]) : anovaP(groups);
+        let cTop = 0; for (let s = 0; s < S; s++) { const cs = cell[ci][s]; if (cs) cTop = Math.max(cTop, cs.mean + cs.err); }
+        const yb = logScale ? cTop * 1.10 : cTop + globalTop * 0.05;          // bracket top
+        const leg = logScale ? yb / 1.035 : yb - globalTop * 0.022;           // short legs drop toward the bars
+        const x0 = bxOf(ci, 0), x1 = bxOf(ci, S - 1), cx = (x0 + x1) / 2, ln = { color: '#444', width: 1 };
+        shapes.push({ type: 'line', xref: 'x', yref: 'y', x0: x0, x1: x1, y0: yb, y1: yb, line: ln });
+        shapes.push({ type: 'line', xref: 'x', yref: 'y', x0: x0, x1: x0, y0: yb, y1: leg, line: ln });
+        shapes.push({ type: 'line', xref: 'x', yref: 'y', x0: x1, x1: x1, y0: yb, y1: leg, line: ln });
+        const yStar = logScale ? yb * 1.008 : yb + globalTop * 0.004;
+        const yP = logScale ? yb * 1.07 : yb + globalTop * 0.062;
+        if (sigLabel === 'both' || sigLabel === 'stars')
+          anns.push({ x: cx, y: yStar, xref: 'x', yref: 'y', text: stars(p), showarrow: false, yanchor: 'bottom', font: { size: Math.max(12, tick), color: '#333', family: "'IBM Plex Sans', sans-serif" } });
+        if (sigLabel === 'both' || sigLabel === 'p')
+          anns.push({ x: cx, y: yP, xref: 'x', yref: 'y', text: pfmt(p), showarrow: false, yanchor: 'bottom', font: { size: Math.max(10, tick - 1), color: '#333', family: "'IBM Plex Sans', sans-serif" } });
+      });
+    }
+
+    const yMinV = $('qpYMin').value, yMaxV = $('qpYMax').value;
+    let yRange;
+    if (logScale) {
+      const lo = yMinV !== '' && parseFloat(yMinV) > 0 ? Math.log10(parseFloat(yMinV)) : undefined;
+      const hi = yMaxV !== '' && parseFloat(yMaxV) > 0 ? Math.log10(parseFloat(yMaxV)) : undefined;
+      if (lo !== undefined || hi !== undefined) yRange = [lo, hi];
+    } else {
+      const lo = yMinV !== '' ? parseFloat(yMinV) : undefined, hi = yMaxV !== '' ? parseFloat(yMaxV) : undefined;
+      if (lo !== undefined || hi !== undefined) yRange = [lo === undefined ? 0 : lo, hi];
+    }
+    if (sig && errType !== 'none' && yMaxV === '') {
+      const kLin = sigLabel === 'both' ? 1.4 : sigLabel === 'none' ? 1.2 : 1.3;
+      const kLog = sigLabel === 'both' ? 1.85 : sigLabel === 'none' ? 1.4 : 1.6;
+      if (logScale) { const lo = (yRange && yRange[0] != null) ? yRange[0] : (isFinite(dMinPos) ? Math.log10(dMinPos * 0.6) : undefined); yRange = [lo, Math.log10(globalTop * kLog)]; }
+      else { const lo = (yRange && yRange[0] != null) ? yRange[0] : 0; yRange = [lo, globalTop * kLin]; }
+    }
+
+    // x-axis ticks: inner sub-labels under each bar (nested) or one centred label per cluster (basic)
+    let xTickVals, xTickText;
+    if (nested) {
+      xTickVals = []; xTickText = [];
+      cats.forEach((c, ci) => sVals.forEach((sv) => { xTickVals.push(bxOf(ci, sVals.indexOf(sv))); xTickText.push(disp(sDim, sv)); }));
+      cats.forEach((c, ci) => anns.push({ x: ci, xref: 'x', y: -0.09, yref: 'paper', yanchor: 'top', xanchor: tickAng < 0 ? 'right' : 'center', textangle: tickAng, text: (tVals.length > 1 ? c.label : disp(xDim, c.xVal)), showarrow: false, font: { size: tick + 1, color: '#1a1d23', family: "'IBM Plex Sans', sans-serif" } }));
+      const subLab = $('qpSubLab').value.trim() || cap(sDim);
+      if (subLab) anns.push({ x: 1.012, xref: 'paper', y: -0.02, yref: 'paper', xanchor: 'left', yanchor: 'middle', text: subLab, showarrow: false, font: { size: tick, color: '#1a1d23', family: "'IBM Plex Sans', sans-serif" } });
+    } else {
+      xTickVals = cats.map((_, i) => i); xTickText = cats.map(c => c.label);
+    }
+
+    const titleText = $('qpTitle').value.trim();
+    const xLab = $('qpXLab').value.trim() || (nested ? '' : (cap(xDim) + (tVals.length > 1 ? ' / ' + cap(thirdDim) : '')));
+    const outerLabLen = nested && cats.length ? Math.max.apply(null, cats.map(c => String(tVals.length > 1 ? c.label : disp(xDim, c.xVal)).length)) : 1;
+    const bMargin = nested ? Math.round(Math.max(92, 50 + Math.abs(Math.sin(tickAng * Math.PI / 180)) * outerLabLen * tick * 0.62)) : 60;
+
+    const layout = {
+      barmode: 'overlay', bargap: 0, bargroupgap: 0, shapes: shapes, annotations: anns,
+      title: { text: titleText, font: { size: font + 3, color: '#1a1d23', family: "'IBM Plex Sans', sans-serif" }, x: 0.5, xanchor: 'center', automargin: true },
+      font: { family: "'IBM Plex Sans', system-ui, sans-serif", size: font, color: '#1a1d23' },
+      xaxis: { title: { text: xLab, font: { size: font }, standoff: nested ? 38 : 12 }, tickmode: 'array', tickvals: xTickVals, ticktext: xTickText, tickangle: nested ? 0 : tickAng, range: [-0.5, (C || 1) - 0.5], tickfont: { size: tick }, showgrid: false, zeroline: false, linecolor: '#cbd2d9', linewidth: 1, ticks: 'outside', tickcolor: '#cbd2d9', automargin: true },
+      yaxis: { title: { text: $('qpYLab').value, font: { size: font }, standoff: 10 }, type: logScale ? 'log' : 'linear', rangemode: logScale ? 'normal' : 'tozero', range: yRange, tickfont: { size: tick }, showgrid: showGrid, gridcolor: '#eef1f4', zeroline: false, linecolor: '#cbd2d9', linewidth: 1, ticks: 'outside', tickcolor: '#cbd2d9', automargin: true },
+      paper_bgcolor: '#ffffff', plot_bgcolor: '#ffffff',
+      showlegend: showLeg, legend: { orientation: 'h', x: 0.5, xanchor: 'center', y: 1.0, yanchor: 'bottom', font: { size: font } },
+      margin: { l: 64, r: nested ? 54 : 22, t: (titleText ? 46 : 22) + (showLeg ? 26 : 0), b: bMargin },
+      hovermode: 'closest',
+      hoverlabel: { bgcolor: '#fff', bordercolor: '#e2e4e9', font: { family: "'IBM Plex Mono', monospace", size: 11, color: '#1a1d23' } }
+    };
+    const config = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'], toImageButtonOptions: { format: 'png', filename: 'bar_plot', scale: 3 } };
+
+    $('qpEmpty').style.display = 'none'; plotEl.style.display = '';
+    Plotly.react(plotEl, traces, layout, config);
+  }
+
+  let raf = null; const schedule = () => { if (raf) return; raf = requestAnimationFrame(() => { raf = null; render(); }); };
+  [['qpBarOp','qpBarOpVal',2],['qpClust','qpClustVal',2],['qpBarLw','qpBarLwVal',1],['qpErrCap','qpErrCapVal',0],['qpErrThick','qpErrThickVal',1],
+   ['qpPtSz','qpPtSzVal',1],['qpPtJit','qpPtJitVal',1],['qpPtOp','qpPtOpVal',2],['qpTickAng','qpTickAngVal',0],['qpFont','qpFontVal',0],['qpTick','qpTickVal',0]].forEach(([id, vId, dec]) => {
+    const s = $(id), v = $(vId); if (!s || !v) return;
+    const upd = () => { v.textContent = parseFloat(s.value).toFixed(dec); }; upd();
+    s.addEventListener('input', () => { upd(); schedule(); });
+  });
+  ['qpBarLc','qpErrColor','qpTitle','qpXLab','qpYLab','qpYMin','qpYMax','qpSubLab'].forEach(id => $(id).addEventListener('input', schedule));
+  ['qpErr','qpPtColor','qpPts','qpLog','qpLegend','qpGrid','qpSig','qpSigLabel'].forEach(id => $(id).addEventListener('change', schedule));
+  function toggleNestedUI() { const on = $('qpNested').checked; $('qpSubLabField').style.display = on ? '' : 'none'; $('qpNestedHint').style.display = on ? '' : 'none'; }
+  $('qpNested').addEventListener('change', () => { toggleNestedUI(); buildColorUI(); schedule(); });
+  $('qpSigTest').addEventListener('change', () => { updateSigHelp(); schedule(); });
+  $('qpXDim').addEventListener('change', () => { fixDims('x'); buildColorUI(); schedule(); });
+  $('qpGroupDim').addEventListener('change', () => { fixDims('g'); buildColorUI(); schedule(); });
+  $('qpSwap').addEventListener('change', () => {
+    if (!rawRows) return;
+    try { data = parseQpcr(rawRows, $('qpSwap').checked); buildFilters(); buildColorUI(); buildRenameUI(); render(); }
+    catch (e) { err('Could not re-read with swapped labels: ' + e.message); }
+  });
+
+  $('qpPng').addEventListener('click', () => { if (data) Plotly.downloadImage(plotEl, { format: 'png', width: 1200, height: 800, scale: 3, filename: 'bar_plot' }); });
+  $('qpSvg').addEventListener('click', () => { if (data) saveSVG(plotEl, 'bar_plot'); });
+  $('qpPdf').addEventListener('click', () => { if (data) savePDF(plotEl, 'bar_plot'); });
+
+  window.__qpResize = () => { if (data && plotEl.style.display !== 'none') Plotly.Plots.resize(plotEl); };
+})();
+</script>
+</body>
+</html>
