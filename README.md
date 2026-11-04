@@ -4,7 +4,10 @@ Three plotters for common wet-lab data, in one web page: **polysome profiles**, 
 plots** of replicate measurements such as qPCR or dual-luciferase assays. Load a CSV, adjust the look, and
 export a figure as SVG, PDF or PNG.
 
-Download [`polysome-volcano-bar-plotter.html`](polysome-volcano-bar-plotter.html) and open it in any recent
+**Use it in your browser:**
+https://animeshdali.github.io/Ribosome-and-RNA-Wet-Lab-Data-Plotting-Tools/polysome-volcano-bar-plotter.html
+
+Or download [`polysome-volcano-bar-plotter.html`](polysome-volcano-bar-plotter.html) and open it in any recent
 browser. There is nothing to install.
 
 **Your data stays on your computer.** The page reads your CSV in the browser and sends it nowhere. It needs
